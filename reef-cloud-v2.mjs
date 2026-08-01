@@ -563,4 +563,92 @@ createWssServer(443, 'APP', handleAppFrame);
 createWssServer(442, 'GERÄT', handleDeviceFrame, false);
 // Fallback, falls ein Gerät plain ws versucht
 createWssServer(80, 'GERÄT', handleDeviceFrame, false);
+
+// ====================================================================
+// Web-UI + JSON-API (Port 8080) — Dashboard aus webui/dist (npm run build)
+// ====================================================================
+// Endpunkte:
+//   GET  /api/devices  → { devices: [deviceSnapshot…], now }      (alle bekannten, auch offline)
+//   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
+//   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
+//   /*               → statische Dateien aus webui/dist (SPA-Fallback auf index.html)
+const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
+const WEBUI_MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.ico': 'image/x-icon', '.json': 'application/json', '.map': 'application/json',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+};
+
+function webSendJson(res, obj, code = 200) {
+  res.writeHead(code, {
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-headers': 'content-type',
+  });
+  res.end(JSON.stringify(obj));
+}
+
+function webReadBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+const webServer = http.createServer(async (req, res) => {
+  const u = new URL(req.url || '/', 'http://reefcloud.local');
+  try {
+    if (req.method === 'OPTIONS') return webSendJson(res, {});
+    if (u.pathname === '/api/devices' && req.method === 'GET') {
+      // alle bekannten Geräte (deviceMeta), Online-Flag aus der Live-Registry
+      return webSendJson(res, { devices: [...deviceMeta.keys()].map(snapshot), now: Date.now() });
+    }
+    if (u.pathname === '/api/command' && req.method === 'POST') {
+      const { serial, action, params: ap = {} } = JSON.parse(await webReadBody(req) || '{}');
+      const dev = devices.get(serial);
+      if (!dev || dev.readyState !== dev.OPEN) throw new Error(`Gerät ${serial} nicht verbunden`);
+      const [cls, mth, payload] = buildCommandFrame(serial, action, ap);
+      const buf = encodeFrame(cls, mth, payload, serial);
+      captureFrame(buf, 'out', serial);
+      dev.send(buf);
+      log(`  [webui] command ${action} → ${serial}: ${cls}/${mth}`);
+      return webSendJson(res, { ok: true });
+    }
+    if (u.pathname === '/api/capture') {
+      if (req.method === 'POST') {
+        const { on } = JSON.parse(await webReadBody(req) || '{}');
+        captureOn = !!on;
+        if (captureOn) captureBuffer.length = 0;
+        log(`  [webui] Capture ${captureOn ? 'AN (Puffer geleert)' : 'AUS (Puffer bleibt)'}`);
+        return webSendJson(res, { capture: captureOn });
+      }
+      return webSendJson(res, { capture: captureOn, frames: captureBuffer.slice() });
+    }
+    // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html)
+    const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname).replace(/^\/+/, '');
+    const fp = path.normalize(path.join(WEBUI_DIR, rel));
+    if (!fp.startsWith(WEBUI_DIR)) { res.writeHead(403); res.end(); return; }
+    fs.readFile(fp, (err, data) => {
+      if (err) {
+        fs.readFile(path.join(WEBUI_DIR, 'index.html'), (e2, idx) => {
+          if (e2) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); res.end('webui nicht gebaut — in webui/ erst npm install, dann npm run build'); return; }
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          res.end(idx);
+        });
+        return;
+      }
+      res.writeHead(200, { 'content-type': WEBUI_MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream' });
+      res.end(data);
+    });
+  } catch (e) {
+    webSendJson(res, { ok: false, error: e.message }, 400);
+  }
+});
+webServer.listen(8080, () => log('Web-UI lauscht auf Port 8080 (Dashboard: http://<host>:8080)'));
+webServer.on('error', (e) => log(`!! Port 8080 (Web-UI): ${e.code || e.message}`));
+
 log('reef-cloud-v2 gestartet. Log-Datei: ' + LOG_FILE);
