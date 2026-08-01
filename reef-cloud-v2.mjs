@@ -8,6 +8,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { parseTankListPayload, generateTankListPayload, newDeviceRecord } from './tanklist-lib.mjs';
@@ -223,6 +224,39 @@ function parsePreciseData(buf) {
   } catch { return null; }
 }
 
+// rfPrecise/update (Schreibpfad App→Cloud→Lampe, aus App-Mitschnitt 01.08.):
+//   [0] 0x00  [1-4] u32BE neue Version  [5] u8 Punktzahl INKL. implizitem t=0
+//   [6-14] 9 B 0  [15..] Punkte je 9 B (u16BE Minute + 7×u8 Kanal-%)
+//   [danach] u8 Intensität, 0x00.
+// Danach schickt die App rfPrecise/pointer ([u32BE Version][0x00]) als
+// Commit/Sync — die Lampe übernimmt den Zeiger und pusht preciseData zurück.
+const pendingUploads = new Map(); // serial → { version, program } (Rück-Verifikation)
+
+function buildPreciseUpdate(program) {
+  const pts = program.points.filter((p) => p.t > 0 && p.t <= 1440);
+  const version = randomBytes(4).readUInt32BE(0);
+  const buf = Buffer.alloc(15 + pts.length * 9 + 2);
+  buf.writeUInt32BE(version, 1);
+  buf[5] = pts.length + 1; // + impliziter t=0-Startpunkt (nicht im Frame)
+  pts.forEach((p, i) => {
+    const o = 15 + i * 9;
+    buf.writeUInt16BE(p.t, o);
+    p.l.slice(0, 7).forEach((v, ch) => {
+      buf[o + 2 + ch] = Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100);
+    });
+  });
+  buf[15 + pts.length * 9] = program.intensity;
+  return { version, payload: [...buf] };
+}
+
+// Inhalt eines geparsten preciseData gegen das hochgeladene Programm prüfen
+function programMatches(a, b) {
+  const norm = (p) => p.points.filter((x) => x.t > 0)
+    .map((x) => [x.t, ...x.l.slice(0, 7).map((v) => Math.round(v * 100))].join(','))
+    .join('|') + `#${p.intensity}`;
+  return norm(a) === norm(b);
+}
+
 function updateState(serial, cls, method, payloadBuf) {
   const m = metaFor(serial);
   m.lastSeen = Date.now();
@@ -270,6 +304,16 @@ function updateState(serial, cls, method, payloadBuf) {
       if (program) {
         m.lampProgram = program;
         log(`  → Lampenprogramm "${program.name}" (${program.points.length} Punkte, Intensität ${program.intensity} %, Version ${program.version})`);
+        // Rück-Verifikation eines eigenen Uploads (Version + Inhalt müssen passen)
+        const pend = pendingUploads.get(serial);
+        if (pend && program.version === pend.version) {
+          pendingUploads.delete(serial);
+          if (programMatches(program, pend.program)) {
+            log(`  ✓ Upload verifiziert: Lampe meldet das neue Programm (Version ${program.version})`);
+          } else {
+            log(`  ✗ Upload-Diskrepanz: Version ${program.version} stimmt, INHALT weicht ab — Lampe hat Werte nicht (vollständig) übernommen!`);
+          }
+        }
       }
       // Volldump einmal je Inhalt sichern (Grundlage für Write-Pfad-Analyse)
       const sig = `preciseDataDump:${serial}:${payloadBuf.toString('hex')}`;
@@ -820,8 +864,35 @@ const webServer = http.createServer(async (req, res) => {
         const program = sanitizeProgram(body.program);
         fs.mkdirSync(PROGRAM_DIR, { recursive: true });
         fs.writeFileSync(path.join(PROGRAM_DIR, `${serial}.json`), JSON.stringify(program));
-        log(`  [webui] Programm gespeichert für ${serial}: "${program.name}", ${program.points.length} Punkte, Intensität ${program.intensity} % (Upload zur Lampe: Schreibformat noch nicht entschlüsselt)`);
-        return webSendJson(res, { ok: true, uploaded: false });
+        // Upload zur Lampe: rfPrecise/update (Schreibformat aus App-Mitschnitt
+        // verifiziert), danach rfPrecise/pointer als Commit/Sync (App-Verhalten —
+        // der Pointer triggert den preciseData-Re-Push zur Rück-Verifikation)
+        let uploaded = false; let version = null;
+        const dev = devices.get(serial);
+        if (dev && dev.readyState === dev.OPEN && metaFor(serial).family === 'flare') {
+          const up = buildPreciseUpdate(program);
+          version = up.version;
+          const buf = encodeFrame('rfPrecise', 'update', up.payload, serial);
+          captureFrame(buf, 'out', serial);
+          dev.send(buf);
+          pendingUploads.set(serial, { version, program });
+          uploaded = true;
+          log(`  [webui] Programm-Upload → ${serial}: rfPrecise/update Version ${version} (${program.points.length} Punkte, Intensität ${program.intensity} %)`);
+          setTimeout(() => {
+            const d2 = devices.get(serial);
+            if (d2 && d2.readyState === d2.OPEN) {
+              const pv = Buffer.alloc(5);
+              pv.writeUInt32BE(version >>> 0, 0);
+              const pb = encodeFrame('rfPrecise', 'pointer', [...pv], serial);
+              captureFrame(pb, 'out', serial);
+              d2.send(pb);
+              log(`  [webui] rfPrecise/pointer Version ${version} → ${serial} (Commit/Sync)`);
+            }
+          }, 2000);
+        } else {
+          log(`  [webui] Programm gespeichert für ${serial} (Lampe offline — kein Upload)`);
+        }
+        return webSendJson(res, { ok: true, uploaded, version });
       }
     }
     // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html)

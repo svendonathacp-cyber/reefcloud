@@ -154,9 +154,15 @@ export default function FlareProgramEditor({ serial }: Props) {
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      toast.success('Programm gespeichert', {
-        description: 'Upload zur Lampe folgt, sobald das Schreib-Protokoll verifiziert ist.',
-      });
+      if (j.uploaded) {
+        toast.success('Programm an die Lampe gesendet', {
+          description: `Version ${j.version} — die Lampe bestätigt den Empfang mit einem Programm-Re-Push.`,
+        });
+      } else {
+        toast.success('Programm gespeichert', {
+          description: 'Lampe gerade offline — nach dem nächsten Login der Lampe erneut speichern, um hochzuladen.',
+        });
+      }
       setDirty(false);
     } catch (e) {
       toast.error('Speichern fehlgeschlagen', { description: String(e) });
@@ -322,8 +328,9 @@ export default function FlareProgramEditor({ serial }: Props) {
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Gespeichert wird das Programm in der reef-cloud — das Hochladen auf die Lampe wird
-        freigeschaltet, sobald der rfPrecise-Schreibpfad aus einem App-Mitschnitt verifiziert ist.
+        Beim Speichern wird das Programm per rfPrecise/update an die Lampe gesendet und anhand
+        des Programm-Re-Pushs (Version + Inhalt) verifiziert. Das aktuelle Lampenprogramm
+        lädt der Editor automatisch, solange keine eigene Variante gespeichert ist.
       </p>
     </div>
   );
