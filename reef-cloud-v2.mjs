@@ -491,10 +491,12 @@ function buildCommandFrame(serial, action, params) {
     }
     case 'roller:feed':    // ✅ live verifiziert 01.08. (srLog/used + srReport/all als Antwort)
       return ['srExecute', 'manual', latin1(JSON.stringify({ length: Number(params.mm ?? params.length ?? 30) }))];
-    case 'roller:newRoll': // UNVERIFIZIERT
-      return ['srSet', 'newRoll', latin1(JSON.stringify({}))];
-    case 'roller:unblock': // UNVERIFIZIERT
-      return ['srSet', 'unblock', latin1(JSON.stringify({}))];
+    case 'roller:newRoll': // ✅ live verifiziert 02.08. gegen App-Mitschnitt: {"diameter":-1}
+      return ['srSet', 'newRoll', latin1(JSON.stringify({ diameter: -1 }))];
+    case 'roller:setMode': { // ✅ live verifiziert 02.08. gegen App-Mitschnitt: {"type":0|1}
+      const type = Number(params.type ?? (params.mode === 'auto' ? 1 : 0));
+      return ['srSet', 'mode', latin1(JSON.stringify({ type: type === 1 ? 1 : 0 }))];
+    }
     default:
       throw new Error(`unknown action ${action} für family ${fam}`);
   }

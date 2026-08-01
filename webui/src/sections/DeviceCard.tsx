@@ -126,6 +126,8 @@ function RollerBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Co
   const current = num(roll.currentLength);
   const start = num(roll.startLength, 1);
   const pct = Math.max(0, Math.min(100, Math.round((current / start) * 100)));
+  const modeType = num(dev.state.mode, -1);
+  const modeLabel = modeType === 1 ? 'Automatik' : modeType === 0 ? 'Aus' : str(dev.state.mode, '—');
   const [mm, setMm] = useState(30);
   const [busy, setBusy] = useState<string | null>(null);
   const run = async (action: string, params: Record<string, unknown>, label: string) => {
@@ -149,8 +151,19 @@ function RollerBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Co
         </p>
       </div>
       <div className="mt-3 space-y-1">
+        <Stat label="Modus" value={modeLabel} mono={false} />
         <Stat label="Heute verbraucht" value={`${num(roll.todayUsed)} mm`} />
         <Stat label="Ø pro Tag" value={`${num(roll.dailyUsedAverage)} mm`} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button size="sm" variant={modeType === 0 ? 'default' : 'outline'} disabled={!dev.online || busy !== null || modeType === 0}
+          onClick={() => run('setMode', { type: 0 }, 'Modus Aus')}>
+          {busy === 'setMode' && modeType !== 0 ? '…' : 'Aus'}
+        </Button>
+        <Button size="sm" variant={modeType === 1 ? 'default' : 'outline'} disabled={!dev.online || busy !== null || modeType === 1}
+          onClick={() => run('setMode', { type: 1 }, 'Modus Automatik')}>
+          {busy === 'setMode' && modeType !== 1 ? '…' : 'Automatik'}
+        </Button>
       </div>
       <div className="mt-3 flex items-center gap-2">
         <Input type="number" min={1} max={500} value={mm} disabled={!dev.online}
@@ -160,14 +173,10 @@ function RollerBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Co
           {busy === 'feed' ? '…' : 'Vorschub'}
         </Button>
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2">
         <Button size="sm" variant="outline" disabled={!dev.online || busy !== null}
           onClick={() => { if (window.confirm('Neue Vliesrolle wirklich einlernen?')) run('newRoll', {}, 'Neue Rolle'); }}>
-          Neue Rolle
-        </Button>
-        <Button size="sm" variant="outline" disabled={!dev.online || busy !== null}
-          onClick={() => { if (window.confirm('Blockade des Rollers wirklich zurücksetzen?')) run('unblock', {}, 'Entblocken'); }}>
-          Entblocken
+          {busy === 'newRoll' ? '…' : 'Neue Rolle'}
         </Button>
       </div>
     </>
