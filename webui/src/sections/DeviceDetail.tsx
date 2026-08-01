@@ -44,7 +44,7 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
       return (
         <>
           <BigStat label="Stärke" value={num(dev.state.speed)} unit="%" />
-          <BigStat label="Modus" value={{ 1: 'Konstant', 4: 'Zufällig' }[num(dev.state.mode)] ?? num(dev.state.mode)} accent={false} />
+          <BigStat label="Modus" value={{ 1: 'Konstant', 2: 'Puls', 3: 'Sinus', 4: 'Zufällig' }[num(dev.state.mode)] ?? num(dev.state.mode)} accent={false} />
           <BigStat label="Uhr" value={clockFmt(dev.state.clock)} accent={false} />
         </>
       );

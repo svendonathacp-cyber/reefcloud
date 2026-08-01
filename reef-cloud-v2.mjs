@@ -466,6 +466,29 @@ function buildCommandFrame(serial, action, params) {
       // VERIFIZIERT 02.08. gegen App-Mitschnitt: swSet/feed {"command":0}
       // (Payload ohne NUL — Terminator kommt von encodeFrame, s. swSet/settings)
       return ['swSet', 'feed', latin1(JSON.stringify({ command: 0 }))];
+    case 'wave:setSchedule': {
+      // VERIFIZIERT 02.08. gegen App-Mitschnitt (gemischter Tagesplan):
+      // mode 1 Konstant {speed}; mode 2 Puls / 3 Sinus / 4 Zufällig
+      // {minSpeed,maxSpeed,period}. time = Startminute des Blocks; der Tag
+      // beginnt bei 0, Blöcke laufen bis zum nächsten time (bzw. 1440).
+      const list = Array.isArray(params.schedule) ? params.schedule : [];
+      if (!list.length) throw new Error('schedule leer');
+      const pct = (v) => Math.min(100, Math.max(0, Math.round(Number(v) || 0)));
+      const clean = list.map((e) => {
+        const mode = Number(e?.mode);
+        const time = Math.min(1439, Math.max(0, Math.round(Number(e?.time) || 0)));
+        if (mode === 1) return { mode: 1, time, speed: pct(e?.speed) };
+        if (![2, 3, 4].includes(mode)) throw new Error(`unbekannter Wave-Modus ${mode}`);
+        return {
+          mode, time,
+          minSpeed: pct(e?.minSpeed),
+          maxSpeed: pct(e?.maxSpeed),
+          period: Math.min(60000, Math.max(500, Math.round(Number(e?.period) || 10000))),
+        };
+      }).sort((a, b) => a.time - b.time);
+      clean[0].time = 0; // Tag beginnt immer bei 0 (App-Verhalten)
+      return ['swSet', 'settings', latin1(JSON.stringify({ schedule: clean }))];
+    }
     case 'roller:feed':    // ✅ live verifiziert 01.08. (srLog/used + srReport/all als Antwort)
       return ['srExecute', 'manual', latin1(JSON.stringify({ length: Number(params.mm ?? params.length ?? 30) }))];
     case 'roller:newRoll': // UNVERIFIZIERT
