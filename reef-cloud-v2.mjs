@@ -226,6 +226,55 @@ function updateState(serial, cls, method, payloadBuf) {
     }
     // (leere temp-Frames: nichts zu parsen — Temp steckt in dashboardData Byte 1)
   }
+  // 2b) Altgeräte: Binär-Layouts (Level-Sensor, Thermo, Salinity, Level-Keeper)
+  // Layouts aus Live-Captures entschlüsselt (Doku §5c). KEIN NUL-Strip hier —
+  // die Altgeräte hängen kein NUL an. Nur exakt bekannte Längen parsen,
+  // unkalibrierte Varianten (z. B. sgRefresh/settings mit 51 B) bewusst ignorieren.
+  let altParsed = null;
+  {
+    const pl = payloadBuf;
+    if (cls === 'lsRefresh' && method === 'data' && pl.length >= 3) {
+      // [sensorIndex][code][res] — Sensor 0=unten: 0x03 ok, 0x00 Alarm niedrig;
+      // Sensor 1=oben: 0x02 ok, 0x03 Alarm hoch
+      const idx = pl[0], code = pl[1];
+      const state = idx === 0
+        ? (code === 0x03 ? 'ok' : code === 0x00 ? 'alarmLow' : 'unknown')
+        : idx === 1
+          ? (code === 0x02 ? 'ok' : code === 0x03 ? 'alarmHigh' : 'unknown')
+          : 'unknown';
+      altParsed = { [`sensor${idx}`]: state, [`sensor${idx}Code`]: code };
+    } else if (cls === 'tcRefresh' && method === 'settings' && pl.length === 4) {
+      // u32BE; >= 1000 → temperatureC = raw/1000 (25400 = 25,4 °C, gegen Display kalibriert)
+      const raw = pl.readUInt32BE(0);
+      altParsed = raw >= 1000
+        ? { temperatureC: Math.round(raw / 10) / 100 }
+        : { thermoRaw: raw };
+    } else if (cls === 'sgRefresh' && method === 'settings' && pl.length === 4) {
+      // u32BE / 100 → °C (0x0000088b = 21,87 °C). 51-B-Variante: nicht kalibriert → ignorieren.
+      altParsed = { temperatureC: pl.readUInt32BE(0) / 100 };
+    } else if (cls === 'lkRefresh' && method === 'settings' && pl.length >= 34) {
+      altParsed = {
+        mode: pl[0],
+        calibrationMl: pl.readUInt16BE(4),
+        maxRefillRuntimeS: pl.readUInt32BE(25),
+        led: pl[33],
+      };
+    } else if (cls === 'lkRefresh' && method === 'status' && pl.length >= 12) {
+      // ACHTUNG: todayMl ist Little-Endian (einzige LE-Stelle im Protokoll)
+      const statusCode = pl[0];
+      altParsed = {
+        statusCode,
+        status: { 0: 'normal', 1: 'filling', 5: 'high', 6: 'low' }[statusCode] ?? 'unknown',
+        todayMl: pl.readUInt32LE(4),
+        refillRuntimeS: pl.readUInt32BE(8),
+      };
+    }
+  }
+  if (altParsed) {
+    m.state = { ...m.state, ...altParsed };
+    if (JSON.stringify(m.state) !== before) announce(serial);
+    return;
+  }
   // 3) Unbekannte Binärframes einmal je Gerät/Methode als Hex loggen (Analyse)
   const sig = `${serial}:${cls}/${method}`;
   if (!loggedBinaryOnce.has(sig) && !/Report$/.test(cls)) {
@@ -440,15 +489,21 @@ function handleDeviceFrame(ws, buf, peer) {
       now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(),
     ], f.serial);
     log(`  → Altgerät ${f.serial} eingeloggt (email=${email}, key=${key}, version=${version})`);
-    // Flare-Priming: rfConnect/join nachschieben (Payload = serial\0, extra = join_-Tag,
-    // exakt wie die App — Original-Mitschnitt 0023). Erst dann startet das Gerät
-    // seine Periodik (dashboardData/preciseEdit alle ~5 s) — ohne Join fließen
-    // Kanäle/Temp nur, solange eine App gejoint ist.
-    if (f.serial && f.serial !== '0000000000000000' && metaFor(f.serial).family === 'flare') {
-      const buf = encodeFrame('rfConnect', 'join', [...latin1(f.serial), 0], f.serial, `join_${Date.now()}`);
-      captureFrame(buf, 'out', f.serial);
-      ws.send(buf);
-      log('  → rfConnect/join gesendet (Flare-Priming, startet dashboardData-Periodik)');
+    // Altgeräte-Priming: <prefix>Connect/join nachschieben (Payload = serial\0,
+    // extra = join_-Tag, exakt wie die App — Original-Mitschnitt 0023). Erst dann
+    // starten die Geräte ihre Periodik (z. B. Flare dashboardData alle ~5 s) —
+    // ohne Join fließen Daten nur, solange eine App gejoint ist. Präfix je Familie:
+    // flare=rf, salinity=sg, thermo=tc, levelSensor=ls, level=lk (Level Keeper).
+    // Ein falsches Präfix wäre unkritisch: das Gerät ignoriert unbekannte Klassen.
+    const JOIN_PREFIX = { flare: 'rf', salinity: 'sg', thermo: 'tc', levelSensor: 'ls', level: 'lk' };
+    if (f.serial && f.serial !== '0000000000000000') {
+      const jp = JOIN_PREFIX[metaFor(f.serial).family];
+      if (jp) {
+        const buf = encodeFrame(`${jp}Connect`, 'join', [...latin1(f.serial), 0], f.serial, `join_${Date.now()}`);
+        captureFrame(buf, 'out', f.serial);
+        ws.send(buf);
+        log(`  → ${jp}Connect/join gesendet (Priming, startet Periodik)`);
+      }
     }
     return;
   }
