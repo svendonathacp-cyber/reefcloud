@@ -434,21 +434,27 @@ function buildCommandFrame(serial, action, params) {
         backlight: onOff(cur.backlight ?? 'on'),
       }))];
     case 'wave:setSpeed': {
-      // UNVERIFIZIERT: Format per Analogie bpSet angenommen — erste App-Nutzung
-      // liefert das echte Format via Payload-Capture (dumps/live_capture/)
+      // VERIFIZIERT 02.08. gegen App-Mitschnitt: swSet/settings trägt NUR das
+      // schedule-Array mit dem Modus-Objekt (mode 1: {mode,time,speed};
+      // mode 4: {mode,time,minSpeed,maxSpeed,period}), Payload endet mit NUL.
       const s = cur.settings || {};
-      return ['swSet', 'settings', latin1(JSON.stringify({
-        speed: Number(params.speed),
-        mode: cur.mode ?? 1,
-        settings: {
-          feedTime: s.feedTime ?? 900,
-          display: s.display ?? 1,
-          backlight: s.backlight ?? 1,
-          schedule: s.schedule ?? [],
-        },
-      }))];
+      const schedule = Array.isArray(s.schedule) && s.schedule.length
+        ? JSON.parse(JSON.stringify(s.schedule))
+        : [{ mode: cur.mode ?? 1, time: 0, speed: cur.speed ?? 0 }];
+      for (const e of schedule) {
+        if ('minSpeed' in e || 'maxSpeed' in e) {
+          e.maxSpeed = Number(params.maxSpeed ?? params.speed);
+          if (params.minSpeed != null) e.minSpeed = Number(params.minSpeed);
+        } else {
+          e.speed = Number(params.speed);
+        }
+      }
+      return ['swSet', 'settings', [...latin1(JSON.stringify({ schedule })), 0]];
     }
-    case 'roller:feed':    // UNVERIFIZIERT (Payload-Form geraten, Capture prüft)
+    case 'wave:feed':
+      // VERIFIZIERT 02.08. gegen App-Mitschnitt: swSet/feed {"command":0} + NUL
+      return ['swSet', 'feed', [...latin1(JSON.stringify({ command: 0 })), 0]];
+    case 'roller:feed':    // ✅ live verifiziert 01.08. (srLog/used + srReport/all als Antwort)
       return ['srExecute', 'manual', latin1(JSON.stringify({ length: Number(params.mm ?? params.length ?? 30) }))];
     case 'roller:newRoll': // UNVERIFIZIERT
       return ['srSet', 'newRoll', latin1(JSON.stringify({}))];
