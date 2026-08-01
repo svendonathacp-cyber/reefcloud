@@ -430,6 +430,16 @@ function handleDeviceFrame(ws, buf, peer) {
       now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(),
     ], f.serial);
     log(`  → Altgerät ${f.serial} eingeloggt (email=${email}, key=${key}, version=${version})`);
+    // Flare-Priming: rfConnect/join nachschieben (Payload = serial\0, extra = join_-Tag,
+    // exakt wie die App — Original-Mitschnitt 0023). Erst dann startet das Gerät
+    // seine Periodik (dashboardData/preciseEdit alle ~5 s) — ohne Join fließen
+    // Kanäle/Temp nur, solange eine App gejoint ist.
+    if (f.serial && f.serial !== '0000000000000000' && metaFor(f.serial).family === 'flare') {
+      const buf = encodeFrame('rfConnect', 'join', [...latin1(f.serial), 0], f.serial, `join_${Date.now()}`);
+      captureFrame(buf, 'out', f.serial);
+      ws.send(buf);
+      log('  → rfConnect/join gesendet (Flare-Priming, startet dashboardData-Periodik)');
+    }
     return;
   }
   if (f.cls === 'user' && f.method === 'logout') {
