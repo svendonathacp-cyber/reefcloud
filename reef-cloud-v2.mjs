@@ -664,9 +664,20 @@ function handleDeviceFrame(ws, buf, peer) {
     return;
   }
   if (f.cls === 'user' && f.method === 'logout') {
-    // Altgeräte-Logout: Bestätigung status/logout "ok" + Gerät abmelden
+    // Altgeräte-Logout: Bestätigung status/logout "ok" + Gerät abmelden.
+    // Nur die aktuell registrierte Verbindung darf die Online-Registry leeren —
+    // nach Power-Cycle/Reconnect können alte Sockets sonst das neue Login löschen.
     send(ws, 'status', 'logout', latin1('ok'), f.serial);
-    if (ws.deviceSerial) { devices.delete(ws.deviceSerial); log(`  → Altgerät ${ws.deviceSerial} abgemeldet`); ws.deviceSerial = null; }
+    if (ws.deviceSerial) {
+      const serial = ws.deviceSerial;
+      if (devices.get(serial) === ws) {
+        devices.delete(serial);
+        log(`  → Altgerät ${serial} abgemeldet`);
+      } else {
+        log(`  → Altgerät ${serial}: Logout auf alter Verbindung ignoriert`);
+      }
+      ws.deviceSerial = null;
+    }
     return;
   }
   // Alles andere vom Gerät: State fürs Tunnel-Snapshot pflegen + an abonnierende Apps weiterreichen
@@ -772,10 +783,18 @@ function createWssServer(port, role, frameHandler, useTls = true) {
     ws.on('close', (code, reason) => {
       clearInterval(pingInterval);
       if (role === 'GERÄT' && ws.deviceSerial) {
-        devices.delete(ws.deviceSerial);
+        const serial = ws.deviceSerial;
         for (const set of joins.values()) set.delete(ws);
-        announce(ws.deviceSerial, true); // Tunnel: Gerät offline melden
-        log(`=== ${role}-Close: ${peer} (${ws.deviceSerial} abgemeldet) code=${code} ===`);
+        // Nur die aktuell registrierte Verbindung darf offline melden. Beim
+        // Power-Cycle bauen Geräte oft die neue Verbindung auf, bevor die alte
+        // endgültig geschlossen wird; sonst löscht der späte Close das neue Login.
+        if (devices.get(serial) === ws) {
+          devices.delete(serial);
+          announce(serial, true); // Tunnel: Gerät offline melden
+          log(`=== ${role}-Close: ${peer} (${serial} abgemeldet) code=${code} ===`);
+        } else {
+          log(`=== ${role}-Close: ${peer} (alte Verbindung ${serial}, aktive bleibt) code=${code} ===`);
+        }
       } else {
         apps.delete(ws);
         for (const set of joins.values()) set.delete(ws);
