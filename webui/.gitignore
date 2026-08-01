@@ -8,9 +8,11 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 *.local
+
+# HINWEIS (Projekt-Regel): dist wird bewusst COMMITTET, damit der Pi die UI
+# ohne Build-Schritt ausliefern kann (reef-cloud-v2 serviert webui/dist).
 
 # Editor directories and files
 .vscode/*
