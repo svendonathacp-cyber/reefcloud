@@ -168,6 +168,7 @@ function snapshot(serial) {
     online: devices.has(serial),
     state: m.state,
     lastSeen: m.lastSeen,
+    ...(m.lampProgram ? { lampProgram: m.lampProgram } : {}),
   };
 }
 
@@ -195,6 +196,32 @@ function announce(serial, immediate = false) {
 // Kanalzahl 9 aus den Rampenwerten in rfRefresh/preciseData).
 // announce() nur bei tatsächlicher State-Änderung (Altgeräte pushen alle 5 s!).
 const loggedBinaryOnce = new Set();
+
+// preciseData (komplettes Lampenprogramm) → { name, intensity, version, points }
+// Punkte-Modell wie App-Export: [{ t: Minute 0..1440, l: [7 Kanäle 0..1] }].
+// Der t=0-Startpunkt ist implizit (nicht im Frame) und wird ergänzt.
+function parsePreciseData(buf) {
+  try {
+    if (buf.length < 73) return null;
+    let name = '';
+    for (let i = 6; i + 1 < 53; i += 2) {
+      const code = buf.readUInt16LE(i);
+      if ((code & 0xff) === 0) break; // Terminator: einzelnes 0x00 im Low-Byte
+      name += String.fromCharCode(code);
+    }
+    const version = buf.readUInt32BE(53);
+    const framePoints = Math.floor((buf.length - 72) / 9);
+    const points = [];
+    for (let i = 0; i < framePoints; i++) {
+      const o = 67 + i * 9;
+      const t = buf.readUInt16BE(o);
+      if (t > 1440) return null; // Plausibilitätscheck — Layout passt nicht
+      points.push({ t, l: [...buf.subarray(o + 2, o + 9)].map((v) => v / 100) });
+    }
+    if (!points.length || points[0].t !== 0) points.unshift({ t: 0, l: [0, 0, 0, 0, 0, 0, 0] });
+    return { name, intensity: buf[buf.length - 6], version, points };
+  } catch { return null; }
+}
 
 function updateState(serial, cls, method, payloadBuf) {
   const m = metaFor(serial);
@@ -230,9 +257,21 @@ function updateState(serial, cls, method, payloadBuf) {
       m.state = { ...m.state, precisePointer: payloadBuf.readUInt32BE(0) };
       if (JSON.stringify(m.state) !== before) announce(serial);
     } else if (method === 'preciseData' && payloadBuf.length > 40) {
-      // Komplettes Lichtprogramm der Lampe (wird nach Join gepusht) — einmal je
-      // Inhalt als Volldump sichern; Grundlage für den Editor-Parser (Layout:
-      // UTF-16LE-Name, Intensität-Byte, danach Punkte — Analyse läuft).
+      // Komplettes Lichtprogramm der Lampe (wird nach Join gepusht) — Layout
+      // vollständig entschlüsselt 01.08. (Verifikation gegen App-Export-JSON):
+      //   [0-2] Header (unbekannt)  [3] unbekannt  [4-5] 08 00
+      //   [6..] Name UTF-16LE + 00, dann 0x01, Zero-Padding bis Offset 53
+      //   [53] u32BE Programmversion (= preciseEdit-Pointer!)
+      //   [57] u8 Punktzahl INKL. implizitem t=0-Startpunkt (steht nicht im Frame)
+      //   [58-66] 9 B Nullen
+      //   [67..] Punkte je 9 B: u16BE Minute + 7×u8 Kanal-Prozent
+      //   [len-6] u8 Gesamtintensität  [len-5..] 5 B Nullen
+      const program = parsePreciseData(payloadBuf);
+      if (program) {
+        m.lampProgram = program;
+        log(`  → Lampenprogramm "${program.name}" (${program.points.length} Punkte, Intensität ${program.intensity} %, Version ${program.version})`);
+      }
+      // Volldump einmal je Inhalt sichern (Grundlage für Write-Pfad-Analyse)
       const sig = `preciseDataDump:${serial}:${payloadBuf.toString('hex')}`;
       if (!loggedBinaryOnce.has(sig)) {
         loggedBinaryOnce.add(sig);
@@ -764,7 +803,15 @@ const webServer = http.createServer(async (req, res) => {
       // Write-Format aus einem App-Mitschnitt entschlüsselt ist (live_capture).
       if (req.method === 'GET') {
         const serial = u.searchParams.get('serial') || '';
-        return webSendJson(res, { serial, program: loadProgram(serial) });
+        // Eigenes gespeichertes Programm hat Vorrang; sonst das echte
+        // Lampenprogramm (preciseData), damit der Editor damit vorbefüllt
+        const custom = loadProgram(serial);
+        const lamp = deviceMeta.get(serial)?.lampProgram ?? null;
+        return webSendJson(res, {
+          serial,
+          program: custom ?? lamp,
+          source: custom ? 'custom' : lamp ? 'lamp' : null,
+        });
       }
       if (req.method === 'POST') {
         const body = JSON.parse(await webReadBody(req) || '{}');
