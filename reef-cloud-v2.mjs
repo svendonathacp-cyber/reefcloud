@@ -158,6 +158,14 @@ function metaFor(serial) {
   return deviceMeta.get(serial);
 }
 
+// Alle Geräte aus dem Tank-Modell von Anfang an kennen — sonst zeigen Web-UI
+// und Tunnel nach einem Neustart nur die Geräte, die sich seitdem eingeloggt
+// haben (Bug 02.08.: 6 statt 12 Karten).
+if (tankModel) {
+  for (const d of tankModel.tanks[0].devices) metaFor(d.serial);
+  log(`deviceMeta initialisiert: ${deviceMeta.size} bekannte Geräte aus dem Tank-Modell`);
+}
+
 function snapshot(serial) {
   const m = metaFor(serial);
   return {
@@ -504,7 +512,7 @@ function buildCommandFrame(serial, action, params) {
 
 async function handleTunnelRequest(method, params) {
   if (method === 'listDevices') {
-    return [...devices.keys()].map(snapshot);
+    return [...deviceMeta.keys()].map(snapshot);
   }
   if (method === 'command') {
     const { serial, action, params: ap = {} } = params;
@@ -545,7 +553,7 @@ if (TUNNEL_TOKEN) {
     url: TUNNEL_URL,
     token: TUNNEL_TOKEN,
     log,
-    getSnapshots: () => [...devices.keys()].map(snapshot),
+    getSnapshots: () => [...deviceMeta.keys()].map(snapshot),
     handleRequest: handleTunnelRequest,
   });
   log(`Tunnel aktiviert → ${TUNNEL_URL}`);
