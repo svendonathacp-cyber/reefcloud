@@ -205,7 +205,10 @@ function updateState(serial, cls, method, payloadBuf) {
     const pl = payloadBuf.length && payloadBuf[payloadBuf.length - 1] === 0
       ? payloadBuf.subarray(0, payloadBuf.length - 1) : payloadBuf;
     if (method === 'dashboardData' && pl.length >= 11) {
-      m.state = { ...m.state, on: pl[0] !== 0, ledTempC: pl[1], channels: [...pl.subarray(2, 11)] };
+      // Kanäle als Rohwerte 0–255 → Prozent skalieren (WebOS-Karte erwartet 0–100;
+      // Skala + Layout [on][temp][9ch][res] per Bridge-Mitschnitt-Verifikation bestätigt)
+      const channels = [...pl.subarray(2, 11)].map((v) => Math.round((v / 255) * 100));
+      m.state = { ...m.state, on: pl[0] !== 0, ledTempC: pl[1], channels };
       if (JSON.stringify(m.state) !== before) announce(serial);
     } else if (method === 'temp' && pl.length >= 1) {
       m.state = { ...m.state, ledTempC: pl[0] };
@@ -387,8 +390,18 @@ function handleDeviceFrame(ws, buf, peer) {
     // State-Priming: bei bekannten JSON-Familien sofort den Voll-Report anfordern,
     // damit Tunnel-Snapshots/App-Karten direkt nach dem Login gefüllt sind
     if (f.serial && f.serial !== '0000000000000000') {
-      const gp = { basepump: 'bp', wave: 'sw', roller: 'sr' }[metaFor(f.serial).family];
-      if (gp) { send(ws, `${gp}Get`, 'all', [], f.serial); log(`  → ${gp}Get/all angefordert (State-Priming)`); }
+      const fam = metaFor(f.serial).family;
+      if (fam === 'roller') {
+        // Roller antwortet NICHT auf srGet/all — die echte Cloud fragte
+        // srGet/settings mit join_-Tag im extra-Feld (Original-Mitschnitt 0009/0042)
+        const buf = encodeFrame('srGet', 'settings', [], f.serial, `join_${Date.now()}`);
+        captureFrame(buf, 'out', f.serial);
+        ws.send(buf);
+        log('  → srGet/settings angefordert (State-Priming, mit join_-Tag)');
+      } else {
+        const gp = { basepump: 'bp', wave: 'sw' }[fam];
+        if (gp) { send(ws, `${gp}Get`, 'all', [], f.serial); log(`  → ${gp}Get/all angefordert (State-Priming)`); }
+      }
     }
     return;
   }
