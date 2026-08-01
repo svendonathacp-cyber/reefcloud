@@ -20,3 +20,6 @@ reef-bridge-nas.tar.gz
 
 # Interne Betriebs-Doku (enthält lokale IPs & Type-Keys) — bleibt lokal
 reef-cloud-anleitung.md
+
+# Flare-Programme (Laufzeitdaten)
+programs/

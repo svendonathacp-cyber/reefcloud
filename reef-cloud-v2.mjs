@@ -223,6 +223,12 @@ function updateState(serial, cls, method, payloadBuf) {
     } else if (method === 'temp' && pl.length >= 1) {
       m.state = { ...m.state, ledTempC: pl[0] };
       if (JSON.stringify(m.state) !== before) announce(serial);
+    } else if (method === 'preciseEdit' && payloadBuf.length >= 4) {
+      // Programm-Versionszeiger der Lampe (u32BE; Originalpuffer, kein NUL-Strip —
+      // der Zeiger kann legitimerweise auf 0x00 enden). preciseData (das eigentliche
+      // Programm) wird einmalig als Hex geloggt, bis das Layout final entschlüsselt ist.
+      m.state = { ...m.state, precisePointer: payloadBuf.readUInt32BE(0) };
+      if (JSON.stringify(m.state) !== before) announce(serial);
     }
     // (leere temp-Frames: nichts zu parsen — Temp steckt in dashboardData Byte 1)
   }
@@ -553,7 +559,7 @@ function handleAppFrame(ws, buf, peer) {
   if (f.serial && f.serial !== '0000000000000000') {
     // Steuerframes (Set/Execute/Manual/Log) als Volldump sichern — Format-Verifikation
     // für das Tunnel-Aktions-Mapping (wave/roller-Payloads sind bisher unverifiziert)
-    if (/(Set|Execute|Manual|Log)\//.test(key)) {
+    if (/(Set|Execute|Manual|Log|Precise)\//.test(key)) {
       try {
         const dir = path.join(DUMP_DIR, 'live_capture');
         fs.mkdirSync(dir, { recursive: true });
@@ -648,6 +654,32 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 //   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
 //   /*               → statische Dateien aus webui/dist (SPA-Fallback auf index.html)
 const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
+// Flare-Programme (Laufzeitdaten, in .gitignore): programs/<serial>.json
+const PROGRAM_DIR = path.join(__dirname, 'programs');
+
+function loadProgram(serial) {
+  try { return JSON.parse(fs.readFileSync(path.join(PROGRAM_DIR, `${serial}.json`), 'utf8')); }
+  catch { return null; }
+}
+
+// Eingabe bereinigen: t auf 0..1440 clampen + auf ganze Minute runden,
+// Kanalwerte auf 0..1, Punkte nach t sortieren, Duplikate entfernen
+function sanitizeProgram(p) {
+  const clamp01 = (v) => Math.min(1, Math.max(0, Number(v) || 0));
+  const points = (Array.isArray(p?.points) ? p.points : [])
+    .map((pt) => ({
+      t: Math.min(1440, Math.max(0, Math.round(Number(pt?.t) || 0))),
+      l: Array.from({ length: 7 }, (_, i) => clamp01(pt?.l?.[i])),
+    }))
+    .sort((a, b) => a.t - b.t)
+    .filter((pt, i, arr) => i === 0 || pt.t !== arr[i - 1].t);
+  if (points.length < 2) throw new Error('Programm braucht mindestens 2 Punkte');
+  return {
+    name: String(p?.name ?? 'Mein Programm').slice(0, 64),
+    intensity: Math.min(100, Math.max(0, Math.round(Number(p?.intensity) || 0))),
+    points,
+  };
+}
 const WEBUI_MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
@@ -707,6 +739,27 @@ const webServer = http.createServer(async (req, res) => {
         return webSendJson(res, { capture: captureOn });
       }
       return webSendJson(res, { capture: captureOn, frames: captureBuffer.slice() });
+    }
+    if (u.pathname === '/api/program') {
+      // Flare-Lichtprogramm (24h-Kurven): serverseitig in programs/<serial>.json.
+      // Datenmodell wie der App-Export: { name, intensity: 0..100,
+      // points: [{ t: Minute des Tages 0..1440, l: [7 Kanäle 0..1] }] }.
+      // Der Upload zur Lampe (rfPrecise-Schreibpfad) wird aktiviert, sobald das
+      // Write-Format aus einem App-Mitschnitt entschlüsselt ist (live_capture).
+      if (req.method === 'GET') {
+        const serial = u.searchParams.get('serial') || '';
+        return webSendJson(res, { serial, program: loadProgram(serial) });
+      }
+      if (req.method === 'POST') {
+        const body = JSON.parse(await webReadBody(req) || '{}');
+        const serial = String(body.serial || '');
+        if (!serial) throw new Error('serial fehlt');
+        const program = sanitizeProgram(body.program);
+        fs.mkdirSync(PROGRAM_DIR, { recursive: true });
+        fs.writeFileSync(path.join(PROGRAM_DIR, `${serial}.json`), JSON.stringify(program));
+        log(`  [webui] Programm gespeichert für ${serial}: "${program.name}", ${program.points.length} Punkte, Intensität ${program.intensity} % (Upload zur Lampe: Schreibformat noch nicht entschlüsselt)`);
+        return webSendJson(res, { ok: true, uploaded: false });
+      }
     }
     // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html)
     const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname).replace(/^\/+/, '');

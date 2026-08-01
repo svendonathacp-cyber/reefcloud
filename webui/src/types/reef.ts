@@ -34,3 +34,16 @@ export interface CaptureResponse {
 }
 
 export type CommandFn = (serial: string, action: string, params?: Record<string, unknown>) => Promise<void>;
+
+// Flare-Lichtprogramm (24h-Kurven), gespiegelt zu GET/POST /api/program.
+// t = Minute des Tages (0..1440), l = 7 Kanäle (0..1): UV, Violett, Indigo, Blau, Grün, Rot, Weiß
+export interface FlareProgramPoint {
+  t: number;
+  l: number[];
+}
+
+export interface FlareProgram {
+  name: string;
+  intensity: number; // Gesamtintensität 0..100 %
+  points: FlareProgramPoint[];
+}

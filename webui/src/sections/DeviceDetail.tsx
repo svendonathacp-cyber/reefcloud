@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   BasepumpBody, FlareBody, FAMILY_META, GenericBody, RollerBody, WaveBody,
 } from './DeviceCard';
+import FlareProgramEditor from './FlareProgramEditor';
 import type { CommandFn, DeviceSnapshot } from '@/types/reef';
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -109,13 +110,16 @@ export default function DeviceDetail({ dev, now, sendCommand }: Props) {
           {dev.family === 'basepump' && <BasepumpBody dev={dev} sendCommand={sendCommand} />}
           {dev.family === 'wave' && <WaveBody dev={dev} sendCommand={sendCommand} />}
           {dev.family === 'roller' && <RollerBody dev={dev} sendCommand={sendCommand} />}
-          {dev.family === 'flare' && <FlareBody dev={dev} />}
+          {dev.family === 'flare' && (
+            <>
+              <FlareBody dev={dev} />
+              <FlareProgramEditor serial={dev.serial} />
+            </>
+          )}
           {!['basepump', 'wave', 'roller', 'flare'].includes(dev.family) && <GenericBody dev={dev} />}
-          {!hasControls && (
+          {!hasControls && dev.family !== 'flare' && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-              {dev.family === 'flare'
-                ? 'Kanal-Steuerung folgt, sobald die rfSet-Befehle verifiziert sind.'
-                : 'Nur Anzeige — Steuerbefehle für diesen Gerätetyp sind noch nicht verifiziert.'}
+              Nur Anzeige — Steuerbefehle für diesen Gerätetyp sind noch nicht verifiziert.
             </p>
           )}
         </CardContent>
