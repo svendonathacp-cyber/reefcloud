@@ -2,6 +2,7 @@
 
 export interface DeviceSnapshot {
   serial: string;
+  name?: string | null;
   ip: string;
   family: string;
   firmware: string | null;
@@ -13,6 +14,8 @@ export interface DeviceSnapshot {
 export interface DevicesResponse {
   devices: DeviceSnapshot[];
   now: number;
+  tank?: string | null;
+  tunnel?: { connected: boolean; url?: string };
 }
 
 export interface CaptureFrame {

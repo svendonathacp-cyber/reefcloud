@@ -103,6 +103,15 @@ function ensureDeviceRegistered(serial) {
   log(`  ★ NEUES GERÄT registriert: ${serial} als "${rec.name}" (rowId=${rowId}) — erscheint in der nächsten tankList`);
 }
 
+// Anzeigenamen aus dem Tank-Modell (HTML-Entities wie &#252; auflösen, trimmen)
+const unescapeHtml = (s) => s && s.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+function deviceName(serial) {
+  const d = tankModel?.tanks[0].devices.find((x) => x.serial === serial);
+  const n = d ? unescapeHtml(d.name)?.trim() : null;
+  return n || null;
+}
+const tankName = () => unescapeHtml(tankModel?.tanks[0]?.name)?.trim() || null;
+
 // ====================================================================
 // Tunnel zum WebOS-Server (donath-home.de) — Geräte-Snapshots + Kommandos
 // ====================================================================
@@ -152,6 +161,7 @@ function snapshot(serial) {
   const m = metaFor(serial);
   return {
     serial,
+    name: deviceName(serial),
     ip: (m.ip || '').replace('::ffff:', ''),
     family: m.family,
     firmware: m.firmware,
@@ -615,7 +625,12 @@ const webServer = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') return webSendJson(res, {});
     if (u.pathname === '/api/devices' && req.method === 'GET') {
       // alle bekannten Geräte (deviceMeta), Online-Flag aus der Live-Registry
-      return webSendJson(res, { devices: [...deviceMeta.keys()].map(snapshot), now: Date.now() });
+      return webSendJson(res, {
+        devices: [...deviceMeta.keys()].map(snapshot),
+        now: Date.now(),
+        tank: tankName(),
+        tunnel: { connected: !!(tunnel && tunnel.isConnected()), url: TUNNEL_URL },
+      });
     }
     if (u.pathname === '/api/command' && req.method === 'POST') {
       const { serial, action, params: ap = {} } = JSON.parse(await webReadBody(req) || '{}');

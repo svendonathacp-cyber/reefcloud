@@ -231,7 +231,7 @@ export default function DeviceCard({ dev, now, sendCommand }: Props) {
           <Icon className="h-5 w-5 text-[#17c3d6]" />
         </div>
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate font-semibold">{meta.name}</p>
+          <p className="truncate font-semibold">{dev.name ?? meta.name}</p>
           <p className="truncate font-mono text-xs text-muted-foreground">{dev.serial}</p>
         </div>
         <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dev.online ? 'bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.5)]' : 'bg-muted-foreground/50'}`} />
@@ -250,3 +250,6 @@ export default function DeviceCard({ dev, now, sendCommand }: Props) {
     </Card>
   );
 }
+
+// Wiederverwendung in der RF-Stil-Detailansicht
+export { SpeedControl, BasepumpBody, WaveBody, RollerBody, FlareBody, GenericBody };

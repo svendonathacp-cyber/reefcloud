@@ -66,6 +66,7 @@ export function startTunnel({ url, token, log, getSnapshots, handleRequest }) {
   connect();
   return {
     sendEvent,
+    isConnected: () => !!(ws && ws.readyState === 1),
     stop() { stopped = true; try { ws?.close(); } catch {} },
   };
 }

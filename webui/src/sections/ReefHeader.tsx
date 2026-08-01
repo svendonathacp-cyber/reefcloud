@@ -1,19 +1,12 @@
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-
-// Wireframe-Cube in Anlehnung an das Reef-Factory-Logo (Orange/Grün/Reef-Blau)
-function CubeLogo() {
-  return (
-    <svg width="36" height="36" viewBox="0 0 40 40" fill="none" strokeWidth="1.7" strokeLinejoin="round">
-      <path d="M20 4 34 12 20 20 6 12Z" stroke="#f5a623" />
-      <path d="M6 12 20 20 20 36 6 28Z" stroke="#3ecf6e" />
-      <path d="M34 12 20 20 20 36 34 28Z" stroke="#009deb" />
-    </svg>
-  );
-}
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Wifi, WifiOff } from 'lucide-react';
 
 interface Props {
+  title: string;
+  tunnel: { connected: boolean; url?: string };
   online: number;
   total: number;
   captureOn: boolean;
@@ -21,28 +14,39 @@ interface Props {
   lastUpdate: number;
 }
 
-export default function ReefHeader({ online, total, captureOn, onCaptureChange, lastUpdate }: Props) {
+// Obere Statusleiste: VPS-Tunnel-Status, Online-Zähler, Capture-Schalter
+export default function ReefHeader({ title, tunnel, online, total, captureOn, onCaptureChange, lastUpdate }: Props) {
+  const tunnelHost = tunnel.url ? new URL(tunnel.url).host : '';
   return (
-    <header className="sticky top-0 z-10 border-b border-border/70 bg-background/80 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-        <CubeLogo />
-        <div className="flex flex-col leading-tight">
-          <span className="bg-gradient-to-r from-[#009deb] to-[#17c3d6] bg-clip-text text-xl font-bold tracking-tight text-transparent">
-            reefcloud
-          </span>
-          <span className="text-xs text-muted-foreground">Lokale Reef-Factory-Cloud</span>
-        </div>
-        <div className="ml-auto flex items-center gap-4">
+    <header className="sticky top-0 z-10 border-b border-border bg-white/85 backdrop-blur">
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        <h1 className="truncate text-sm font-semibold">{title}</h1>
+        <div className="ml-auto flex items-center gap-3 sm:gap-4">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                  tunnel.connected ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {tunnel.connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+                  <span className="hidden sm:inline">VPS {tunnel.connected ? 'verbunden' : 'getrennt'}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Tunnel zum WebOS-Server{tunnelHost ? ` (${tunnelHost})` : ''}: {tunnel.connected ? 'verbunden' : 'getrennt — Reconnect läuft'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Badge variant={online > 0 ? 'default' : 'secondary'} className="gap-1.5">
-            <span className={`inline-block h-2 w-2 rounded-full ${online > 0 ? 'bg-emerald-400' : 'bg-muted-foreground'}`} />
+            <span className={`inline-block h-2 w-2 rounded-full ${online > 0 ? 'bg-emerald-300' : 'bg-muted-foreground'}`} />
             {online}/{total} online
           </Badge>
           <div className="flex items-center gap-2">
             <Switch id="capture" checked={captureOn} onCheckedChange={onCaptureChange} />
             <Label htmlFor="capture" className="text-xs text-muted-foreground">Capture</Label>
           </div>
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            aktualisiert {new Date(lastUpdate).toLocaleTimeString('de-DE', { hour12: false })}
+          <span className="hidden text-xs text-muted-foreground md:inline">
+            {new Date(lastUpdate).toLocaleTimeString('de-DE', { hour12: false })}
           </span>
         </div>
       </div>

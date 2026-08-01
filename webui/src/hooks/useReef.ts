@@ -6,6 +6,8 @@ import type { CaptureFrame, DeviceSnapshot } from '@/types/reef';
 export function useReef(pollMs = 4000) {
   const [devices, setDevices] = useState<DeviceSnapshot[]>([]);
   const [now, setNow] = useState<number>(Date.now());
+  const [tank, setTank] = useState<string | null>(null);
+  const [tunnel, setTunnel] = useState<{ connected: boolean; url?: string }>({ connected: false });
   const [error, setError] = useState<string | null>(null);
   const [captureOn, setCaptureOnState] = useState(false);
   const [frames, setFrames] = useState<CaptureFrame[]>([]);
@@ -17,6 +19,8 @@ export function useReef(pollMs = 4000) {
       const j = await r.json();
       setDevices(j.devices ?? []);
       setNow(j.now ?? Date.now());
+      setTank(j.tank ?? null);
+      setTunnel(j.tunnel ?? { connected: false });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -68,5 +72,5 @@ export function useReef(pollMs = 4000) {
     }
   }, [loadCapture]);
 
-  return { devices, now, error, captureOn, frames, sendCommand, setCapture };
+  return { devices, now, tank, tunnel, error, captureOn, frames, sendCommand, setCapture };
 }
