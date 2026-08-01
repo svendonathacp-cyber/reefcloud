@@ -228,6 +228,10 @@ function parsePreciseData(buf) {
 //   [0] 0x00  [1-4] u32BE neue Version  [5] u8 Punktzahl INKL. implizitem t=0
 //   [6-14] 9 B 0  [15..] Punkte je 9 B (u16BE Minute + 7×u8 Kanal-%)
 //   [danach] u8 Intensität, 0x00.
+// Hinweis: Das Payload-Ende-0x00 ist aus dem dekodierten Mitschnitt übernommen;
+// encodeFrame hängt den Feld-Terminator nochmals an → auf der Leitung doppeltes
+// NUL. Von der Lampe verifiziert toleriert (✓-Verifikation), daher unverändert.
+// (Bei den JSON-Geräten wave/pump ist das NICHT toleriert — dort Payload ohne NUL!)
 // Danach schickt die App rfPrecise/pointer ([u32BE Version][0x00]) als
 // Commit/Sync — die Lampe übernimmt den Zeiger und pusht preciseData zurück.
 const pendingUploads = new Map(); // serial → { version, program } (Rück-Verifikation)
@@ -452,11 +456,16 @@ function buildCommandFrame(serial, action, params) {
           if (params.speed != null) e.speed = Number(params.speed);
         }
       }
-      return ['swSet', 'settings', [...latin1(JSON.stringify({ schedule })), 0]];
+      // WICHTIG: Payload OHNE abschließendes NUL — encodeFrame hängt das
+      // Feld-Terminator-NUL selbst an. Doppel-NUL ließ die Pumpe den Frame
+      // still ignorieren (Bug 02.08.); das NUL im Mitschnitt-Payload IST der
+      // Terminator, nicht Teil des Inhalts.
+      return ['swSet', 'settings', latin1(JSON.stringify({ schedule }))];
     }
     case 'wave:feed':
-      // VERIFIZIERT 02.08. gegen App-Mitschnitt: swSet/feed {"command":0} + NUL
-      return ['swSet', 'feed', [...latin1(JSON.stringify({ command: 0 })), 0]];
+      // VERIFIZIERT 02.08. gegen App-Mitschnitt: swSet/feed {"command":0}
+      // (Payload ohne NUL — Terminator kommt von encodeFrame, s. swSet/settings)
+      return ['swSet', 'feed', latin1(JSON.stringify({ command: 0 }))];
     case 'roller:feed':    // ✅ live verifiziert 01.08. (srLog/used + srReport/all als Antwort)
       return ['srExecute', 'manual', latin1(JSON.stringify({ length: Number(params.mm ?? params.length ?? 30) }))];
     case 'roller:newRoll': // UNVERIFIZIERT
