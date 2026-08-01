@@ -443,10 +443,13 @@ function buildCommandFrame(serial, action, params) {
         : [{ mode: cur.mode ?? 1, time: 0, speed: cur.speed ?? 0 }];
       for (const e of schedule) {
         if ('minSpeed' in e || 'maxSpeed' in e) {
-          e.maxSpeed = Number(params.maxSpeed ?? params.speed);
+          // Mode 4 „Zufällig": min/max/period einzeln änderbar (App-UI:
+          // Minimale/Maximale Leistung %, Frequenz s = period/1000)
+          if (params.speed != null || params.maxSpeed != null) e.maxSpeed = Number(params.maxSpeed ?? params.speed);
           if (params.minSpeed != null) e.minSpeed = Number(params.minSpeed);
+          if (params.period != null) e.period = Number(params.period);
         } else {
-          e.speed = Number(params.speed);
+          if (params.speed != null) e.speed = Number(params.speed);
         }
       }
       return ['swSet', 'settings', [...latin1(JSON.stringify({ schedule })), 0]];

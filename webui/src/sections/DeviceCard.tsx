@@ -98,18 +98,74 @@ function BasepumpBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: 
   );
 }
 
+const WAVE_MODES: Record<number, string> = { 1: 'Konstant', 4: 'Zufällig' };
+
 function WaveBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: CommandFn }) {
   const feed = obj(dev.state.feed);
   const feeding = num(feed.status) === 1;
+  const settings = obj(dev.state.settings);
+  const sched = Array.isArray(settings.schedule) ? (settings.schedule as unknown[]) : [];
+  const entry = obj(sched[0]);
+  const isRandom = 'minSpeed' in entry || 'maxSpeed' in entry;
+  const modeName = WAVE_MODES[num(dev.state.mode)] ?? `Modus ${num(dev.state.mode)}`;
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <Badge variant="secondary">Modus {num(dev.state.mode)}</Badge>
+        <Badge variant="secondary">{modeName}</Badge>
         <Badge variant={feeding ? 'default' : 'secondary'}>{feeding ? 'Fütterung läuft' : 'Normalbetrieb'}</Badge>
         <Stat label="Uhr" value={`${num(dev.state.clock)}`} />
       </div>
-      <SpeedControl dev={dev} sendCommand={sendCommand} />
+      {isRandom
+        ? <WaveRandomControl dev={dev} entry={entry} sendCommand={sendCommand} />
+        : <SpeedControl dev={dev} sendCommand={sendCommand} />}
     </>
+  );
+}
+
+// Mode 4 „Zufällig": Min/Max-Leistung + Frequenz (period ms ↔ App-Anzeige s)
+function WaveRandomControl({ dev, entry, sendCommand }: { dev: DeviceSnapshot; entry: Record<string, unknown>; sendCommand: CommandFn }) {
+  const curMin = num(entry.minSpeed);
+  const curMax = num(entry.maxSpeed);
+  const curPeriod = num(entry.period, 10000);
+  const [minV, setMinV] = useState(curMin);
+  const [maxV, setMaxV] = useState(curMax);
+  const [freqV, setFreqV] = useState(curPeriod / 1000);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setMinV(curMin); setMaxV(curMax); setFreqV(curPeriod / 1000); }, [curMin, curMax, curPeriod]);
+  const dirty = minV !== curMin || maxV !== curMax || Math.round(freqV * 1000) !== curPeriod;
+  const rows: { label: string; value: number; cur: number; set: (v: number) => void; min: number; max: number; step: number; fmt: (v: number) => string }[] = [
+    { label: 'Minimale Leistung', value: minV, cur: curMin, set: setMinV, min: 0, max: 100, step: 1, fmt: (v) => `${v} %` },
+    { label: 'Maximale Leistung', value: maxV, cur: curMax, set: setMaxV, min: 0, max: 100, step: 1, fmt: (v) => `${v} %` },
+    { label: 'Frequenz', value: freqV, cur: curPeriod / 1000, set: setFreqV, min: 0.5, max: 20, step: 0.5, fmt: (v) => `${v.toFixed(1)} s` },
+  ];
+  return (
+    <div className="mt-3 space-y-3">
+      {rows.map((r) => (
+        <div key={r.label} className="space-y-1">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{r.label}</span>
+            <span className="font-mono text-sm font-semibold text-[#17c3d6]">
+              {r.value !== r.cur ? `${r.fmt(r.value)} → ${r.fmt(r.cur)}` : r.fmt(r.cur)}
+            </span>
+          </div>
+          <Slider value={[r.value]} min={r.min} max={r.max} step={r.step} disabled={!dev.online || busy}
+            onValueChange={([v]) => r.set(v)} />
+        </div>
+      ))}
+      <Button size="sm" className="w-full" disabled={!dev.online || !dirty || busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const lo = Math.min(minV, maxV);
+            const hi = Math.max(minV, maxV);
+            await sendCommand(dev.serial, 'setSpeed', { minSpeed: lo, maxSpeed: hi, period: Math.round(freqV * 1000) });
+            toast.success(`Zufall: ${lo}–${hi} %, ${freqV.toFixed(1)} s gesendet`);
+          } catch (e) { toast.error(`Fehler: ${e instanceof Error ? e.message : e}`); }
+          setBusy(false);
+        }}>
+        Übernehmen
+      </Button>
+    </div>
   );
 }
 
