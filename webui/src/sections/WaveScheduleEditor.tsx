@@ -69,11 +69,17 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
     setDirty(true);
   }
 
+  // WICHTIG: mutate() kopiert die Einträge. Die Position des ausgewählten Blocks
+  // deshalb VOR dem Kopieren im Original-Array bestimmen — indexOf() auf der
+  // Kopie würde sonst -1 liefern und die UI crashen.
+  const selectedIndex = () => (sel === null ? -1 : entries.indexOf(sorted[sel]));
+
   function setMode(mode: number) {
-    if (sel === null) return;
+    const idx = selectedIndex();
+    if (idx < 0) return;
     mutate((list) => {
-      const idx = list.indexOf(sorted[sel]);
       const e = list[idx];
+      if (!e) return;
       const fresh: ScheduleEntry = mode === 1
         ? { mode: 1, time: e.time, speed: e.speed ?? e.maxSpeed ?? 50 }
         : {
@@ -87,33 +93,42 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
   }
 
   function nudgeTime(delta: number) {
-    if (sel === null) return;
+    const idx = selectedIndex();
+    if (idx < 0 || sel === null) return;
     mutate((list) => {
-      const idx = list.indexOf(sorted[sel]);
+      const e = list[idx];
+      if (!e) return;
       const prev = sorted[sel - 1];
       const next = sorted[sel + 1];
-      list[idx].time = clamp(list[idx].time + delta, prev ? prev.time + 5 : 0, next ? next.time - 5 : 1439);
+      e.time = clamp(e.time + delta, prev ? prev.time + 5 : 0, next ? next.time - 5 : 1439);
     });
   }
 
   function setParam(key: 'speed' | 'minSpeed' | 'maxSpeed' | 'period', value: number) {
-    if (sel === null) return;
-    mutate((list) => { list[list.indexOf(sorted[sel])][key] = value; });
+    const idx = selectedIndex();
+    if (idx < 0) return;
+    mutate((list) => {
+      const e = list[idx];
+      if (e) e[key] = value;
+    });
   }
 
   function addBlock() {
     mutate((list) => {
       const base = sel !== null ? sorted[sel] : sorted[sorted.length - 1];
+      if (!base) return;
       const next = sel !== null ? sorted[sel + 1] : null;
       const t = clamp(base.time + 60, base.time + 5, next ? next.time - 5 : 1435);
-      list.push({ ...base, time: t });
-      setSel(sorted.length); // nach dem Sortieren landet er dahinter
+      const fresh = { ...base, time: t };
+      list.push(fresh);
+      setSel([...list].sort((a, b) => a.time - b.time).indexOf(fresh));
     });
   }
 
   function removeBlock() {
-    if (sel === null || sorted.length <= 1) return;
-    mutate((list) => { list.splice(list.indexOf(sorted[sel]), 1); });
+    const idx = selectedIndex();
+    if (idx < 0 || sorted.length <= 1) return;
+    mutate((list) => { list.splice(idx, 1); });
     setSel(null);
   }
 
