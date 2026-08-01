@@ -229,6 +229,20 @@ function updateState(serial, cls, method, payloadBuf) {
       // Programm) wird einmalig als Hex geloggt, bis das Layout final entschlüsselt ist.
       m.state = { ...m.state, precisePointer: payloadBuf.readUInt32BE(0) };
       if (JSON.stringify(m.state) !== before) announce(serial);
+    } else if (method === 'preciseData' && payloadBuf.length > 40) {
+      // Komplettes Lichtprogramm der Lampe (wird nach Join gepusht) — einmal je
+      // Inhalt als Volldump sichern; Grundlage für den Editor-Parser (Layout:
+      // UTF-16LE-Name, Intensität-Byte, danach Punkte — Analyse läuft).
+      const sig = `preciseDataDump:${serial}:${payloadBuf.toString('hex')}`;
+      if (!loggedBinaryOnce.has(sig)) {
+        loggedBinaryOnce.add(sig);
+        try {
+          const dir = path.join(DUMP_DIR, 'precise');
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, `${Date.now()}_preciseData_${serial}.bin`), payloadBuf);
+          log(`  → preciseData-Volldump gesichert (${payloadBuf.length} B, ${serial})`);
+        } catch (e) { log(`  !! preciseData-Dump fehlgeschlagen: ${e.message}`); }
+      }
     }
     // (leere temp-Frames: nichts zu parsen — Temp steckt in dashboardData Byte 1)
   }
@@ -249,8 +263,10 @@ function updateState(serial, cls, method, payloadBuf) {
           ? (code === 0x02 ? 'ok' : code === 0x03 ? 'alarmHigh' : 'unknown')
           : 'unknown';
       altParsed = { [`sensor${idx}`]: state, [`sensor${idx}Code`]: code };
-    } else if (cls === 'tcRefresh' && method === 'settings' && pl.length === 4) {
-      // u32BE; >= 1000 → temperatureC = raw/1000 (25400 = 25,4 °C, gegen Display kalibriert)
+    } else if (cls === 'tcRefresh' && method === 'settings' && pl.length >= 4) {
+      // u32BE @0; >= 1000 → temperatureC = raw/1000 (25400 = 25,4 °C, gegen Display
+      // kalibriert). Live-Frame 01.08.: 29 B — danach Sollwerte/Hysterese
+      // (23000/24000/27000/26000 erkennbar), Layout noch nicht final → vorerst nur Temp.
       const raw = pl.readUInt32BE(0);
       altParsed = raw >= 1000
         ? { temperatureC: Math.round(raw / 10) / 100 }
