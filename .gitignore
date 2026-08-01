@@ -1,0 +1,22 @@
+# Secrets & Laufzeitdaten — NIEMALS committen!
+.env
+*.pem
+*.crt
+*.log
+node_modules/
+
+# Mitschnitte & Captures (enthalten Account-Token, E-Mail, persönliche Daten!)
+dumps/
+*.pcapng
+ws-frames.txt
+GET.txt
+lvlkeeper-start.html
+lvlkeeper-probe.mjs
+tanklistdetails-decoded.json
+
+# Pakete/Archive (enthalten Zertifikate & Dumps)
+reef-cloud-vps.zip
+reef-bridge-nas.tar.gz
+
+# Interne Betriebs-Doku (enthält lokale IPs & Type-Keys) — bleibt lokal
+reef-cloud-anleitung.md

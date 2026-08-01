@@ -1,0 +1,14 @@
+{
+  "name": "reef-cloud",
+  "version": "2.0.0",
+  "description": "Lokale Fake-Cloud fuer Reef-Factory-Geraete (Fake api.reeffactory.com). Start: node reef-cloud-v2.mjs — siehe reef-cloud-anleitung.md",
+  "type": "module",
+  "main": "reef-cloud-v2.mjs",
+  "scripts": {
+    "start": "node reef-cloud-v2.mjs",
+    "test": "node tanklist-test.mjs && node tanklistdetails-test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
