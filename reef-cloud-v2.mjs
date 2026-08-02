@@ -962,20 +962,25 @@ function webReadBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-    let tooBig = false;
+    let settled = false;
+    // Guard gegen doppeltes Settle ('error' + 'close' können beide feuern)
+    const fail = (err) => { if (!settled) { settled = true; reject(err); } };
     req.on('data', (c) => {
-      if (tooBig) return; // Rest verwerfen, bis der Socket zu Ende läuft
+      if (settled) return; // Rest verwerfen, bis der Socket zu Ende läuft
       size += c.length;
       if (size > WEB_BODY_LIMIT) {
-        tooBig = true;
         chunks.length = 0;
-        reject(new Error(`Request-Body zu groß (Limit ${WEB_BODY_LIMIT / 1024 / 1024} MB)`));
+        fail(new Error(`Request-Body zu groß (Limit ${WEB_BODY_LIMIT / 1024 / 1024} MB)`));
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => { if (!tooBig) resolve(Buffer.concat(chunks).toString('utf8')); });
-    req.on('error', reject);
+    req.on('end', () => {
+      if (!settled) { settled = true; resolve(Buffer.concat(chunks).toString('utf8')); }
+    });
+    // Stiller Client-Abbruch ohne 'error'/'end': sonst hängt das await für immer
+    req.on('close', () => fail(new Error('Verbindung vor Ende des Request-Bodys geschlossen')));
+    req.on('error', fail);
   });
 }
 
