@@ -37,6 +37,19 @@ export interface CaptureResponse {
 export type CommandFn = (serial: string, action: string, params?: Record<string, unknown>) => Promise<void>;
 export type SetNicknameFn = (serial: string, name: string) => Promise<void>;
 
+// Onboarding: serverseitiger WLAN-Scan, gespiegelt zu GET /api/onboarding/scan.
+export interface OnboardingNetwork {
+  ssid: string;
+  signal: number | null; // 0..100, null = unbekannt
+  rfLike: boolean; // Heuristik: sieht nach RF-Gerät im AP-Modus aus
+}
+
+export interface OnboardingScanResponse {
+  networks: OnboardingNetwork[];
+  error?: string; // gesetzt, wenn der Scan am Host nicht möglich war
+  scannedAt: number; // Epoch-ms
+}
+
 // Ablaufschacht-Stabilisierung, gespiegelt zu GET/POST /api/autolevel.
 export interface AutolevelConfig {
   enabled: boolean;

@@ -17,6 +17,7 @@ import { parseTankListPayload, generateTankListPayload, newDeviceRecord } from '
 import { startTunnel } from './reef-tunnel.mjs';
 import { ensureCertificate } from './reef-cert.mjs';
 import { createAutolevel } from './reef-autolevel.mjs';
+import { scanWifiNetworks } from './reef-onboarding.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -1081,6 +1082,7 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 //   POST /api/settings { tunnelUrl?, tunnelToken?, tunnelType?, tunnelLabel? } → speichern + Tunnel neu starten
 //   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
 //   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
+//   GET  /api/onboarding/scan → { networks: [{ssid, signal, rfLike}], scannedAt } (WLAN-Scan am Host)
 //   /*               → statische Dateien aus webui/dist (SPA-Fallback auf index.html)
 const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
 // Flare-Programme (Laufzeitdaten, in .gitignore): programs/<serial>.json
@@ -1167,6 +1169,32 @@ function assertNoCtrl(field, value) {
   if (/[\r\n]/.test(String(value))) {
     throw new Error(`${field} darf keine Zeilenumbrüche enthalten`);
   }
+}
+
+// WLAN-Scan drosseln: geteilte In-Flight-Promise (parallele Requests warten
+// auf denselben Scan) + kurzer Ergebnis-Cache, damit UI-Spam/Mehrfach-Klicks
+// keine netsh/nmcli-Prozessflut auslösen.
+const ONBOARDING_SCAN_CACHE_MS = 12_000;
+let onboardingScanCache = null; // { ts, payload }
+let onboardingScanInflight = null; // Promise | null
+function onboardingScan() {
+  if (onboardingScanCache && Date.now() - onboardingScanCache.ts < ONBOARDING_SCAN_CACHE_MS) {
+    return Promise.resolve(onboardingScanCache.payload);
+  }
+  if (!onboardingScanInflight) {
+    onboardingScanInflight = (async () => {
+      try {
+        return { networks: await scanWifiNetworks(), scannedAt: Date.now() };
+      } catch (e) {
+        return { networks: [], error: e.message, scannedAt: Date.now() };
+      }
+    })().then((payload) => {
+      // Fehler werden NICHT gecacht — ein Retry soll sofort wieder scannen
+      if (!payload.error) onboardingScanCache = { ts: Date.now(), payload };
+      return payload;
+    }).finally(() => { onboardingScanInflight = null; });
+  }
+  return onboardingScanInflight;
 }
 
 const webServer = http.createServer(async (req, res) => {
@@ -1287,6 +1315,17 @@ const webServer = http.createServer(async (req, res) => {
         }
         return webSendJson(res, { ok: true, uploaded, version });
       }
+    }
+    if (u.pathname === '/api/onboarding/scan' && req.method === 'GET') {
+      // Serverseitiger WLAN-Scan fürs Geräte-Onboarding (Browser können nicht
+      // scannen). Statische Kommandos (netsh/nmcli/iwlist) mit Timeout —
+      // Details in reef-onboarding.mjs. In-Flight geteilt + 12 s Ergebnis-
+      // Cache (siehe onboardingScan). Fehler (z. B. Server per LAN ohne
+      // WLAN-Adapter) kommen als { networks: [], error } mit HTTP 200, damit
+      // die UI sie als Hinweis statt als harten Fehler anzeigen kann.
+      const payload = await onboardingScan();
+      log(`  [webui] onboarding/scan: ${payload.error ? `nicht möglich: ${payload.error}` : `${payload.networks.length} WLAN(s) sichtbar`}`);
+      return webSendJson(res, payload);
     }
     if (u.pathname === '/api/setup/status' && req.method === 'GET') {
       // Setup-Wizard-Status. Token wird absichtlich nie zurückgegeben.
