@@ -64,9 +64,11 @@ function ShaftSketch({ highCovered, lowCovered, speed, arrowDir }: {
   arrowDir: 'up' | 'down' | null; // frischer Eingriff (< Cooldown alt)
 }) {
   const H = 160, W = 120; // Schacht-Geometrie
-  // Wasserpegel: oben bedeckt → hoch (zu voll), unten trocken → niedrig (zu
-  // leer), Normalbereich (unten covered, oben nicht) → zwischen den Sensoren
-  const levelFrac = highCovered === true ? 0.22 : lowCovered === false ? 0.78 : 0.5;
+  // Wasserpegel relativ zur Punktlage (oben cy=28, unten cy=H-18=142):
+  // oben bedeckt → Oberfläche knapp ÜBER dem oberen Punkt (0.08 → y≈21);
+  // unten trocken → Oberfläche UNTER dem unteren Punkt (0.96 → y≈144);
+  // Normalbereich (unten covered, oben nicht) → zwischen den Sensoren.
+  const levelFrac = highCovered === true ? 0.08 : lowCovered === false ? 0.96 : 0.5;
   const waterY = 10 + levelFrac * (H - 20);
   const dot = (c: CoveredState, role: 'high' | 'low') => {
     const problem = role === 'high' ? c === true : c === false;
