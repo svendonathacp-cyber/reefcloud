@@ -743,19 +743,22 @@ function updateState(serial, cls, method, payloadBuf) {
         // manueller Refill Ist/Soll, Temporary-Off-Rest (reef-onboard.mjs)
         ...parseLkSettingsExtra(pl),
       };
-    } else if (cls === 'lkRefresh' && method === 'status' && pl.length >= 12) {
-      // ACHTUNG: todayMl ist Little-Endian (einzige LE-Stelle im Protokoll)
+    } else if (cls === 'lkRefresh' && method === 'status' && pl.length >= 9) {
+      // Reale Status-Frames sind 9 B (Hex-Dump 02.08.: 9×0x00 im Leerlauf) —
+      // das Bridge-Layout (≥12 B, todayMl LE@4, refillRuntimeS BE@8) war zu
+      // lang und hat nie geparst. JS-Lesart (statusCode@0, todayMlBe u32BE@1,
+      // refillRestS u32BE@5) via parseLkStatusExtra. Legacy-Keys nur, falls
+      // doch längere Frames auftauchen; die Endianness-Frage bleibt bis zum
+      // Live-Hexframe während eines Refills offen.
       const statusCode = pl[0];
       altParsed = {
         statusCode,
         // Mapping additiv erweitert (Onboard-JS): 2 = manueller Refill,
         // 3 = Kreislauf-Befüllung, 4 = Kalibrierung, 7 = Temporary-Off
         status: LK_STATUS_TEXT[statusCode] ?? 'unknown',
-        todayMl: pl.readUInt32LE(4),
-        refillRuntimeS: pl.readUInt32BE(8),
-        // Kandidaten-Keys nach dem Onboard-JS (todayMl u32BE@1, Restsekunden
-        // u32BE@5) — widersprechen der LE@4-Lesart oben; beide bleiben
-        // parallel im State, Verifikation live offen.
+        ...(pl.length >= 12
+          ? { todayMl: pl.readUInt32LE(4), refillRuntimeS: pl.readUInt32BE(8) }
+          : {}),
         ...parseLkStatusExtra(pl),
       };
     } else if (cls === 'lkRefresh' && method === 'alert' && pl.length >= 1) {
