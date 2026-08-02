@@ -17,6 +17,7 @@ import { parseTankListPayload, generateTankListPayload, newDeviceRecord } from '
 import { startTunnel } from './reef-tunnel.mjs';
 import { ensureCertificate } from './reef-cert.mjs';
 import { createAutolevel } from './reef-autolevel.mjs';
+import { scanWifiNetworks } from './reef-onboarding.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -1081,6 +1082,7 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 //   POST /api/settings { tunnelUrl?, tunnelToken?, tunnelType?, tunnelLabel? } → speichern + Tunnel neu starten
 //   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
 //   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
+//   GET  /api/onboarding/scan → { networks: [{ssid, signal, rfLike}], scannedAt } (WLAN-Scan am Host)
 //   /*               → statische Dateien aus webui/dist (SPA-Fallback auf index.html)
 const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
 // Flare-Programme (Laufzeitdaten, in .gitignore): programs/<serial>.json
@@ -1286,6 +1288,21 @@ const webServer = http.createServer(async (req, res) => {
           log(`  [webui] Programm gespeichert für ${serial} (Lampe offline — kein Upload)`);
         }
         return webSendJson(res, { ok: true, uploaded, version });
+      }
+    }
+    if (u.pathname === '/api/onboarding/scan' && req.method === 'GET') {
+      // Serverseitiger WLAN-Scan fürs Geräte-Onboarding (Browser können nicht
+      // scannen). Statische Kommandos (netsh/nmcli/iwlist) mit Timeout —
+      // Details in reef-onboarding.mjs. Fehler (z. B. Server per LAN ohne
+      // WLAN-Adapter) kommen als { networks: [], error } mit HTTP 200, damit
+      // die UI sie als Hinweis statt als harten Fehler anzeigen kann.
+      try {
+        const networks = await scanWifiNetworks();
+        log(`  [webui] onboarding/scan: ${networks.length} WLAN(s) sichtbar`);
+        return webSendJson(res, { networks, scannedAt: Date.now() });
+      } catch (e) {
+        log(`  [webui] onboarding/scan nicht möglich: ${e.message}`);
+        return webSendJson(res, { networks: [], error: e.message, scannedAt: Date.now() });
       }
     }
     if (u.pathname === '/api/setup/status' && req.method === 'GET') {
