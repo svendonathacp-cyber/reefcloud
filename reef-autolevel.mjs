@@ -40,7 +40,7 @@ export const AUTOLEVEL_DEFAULTS = {
   stepPercent: 1,      // Schrittweite je Eingriff (%)
   minSpeed: 1,         // Clamp-Untergrenze (%)
   maxSpeed: 100,       // Clamp-Obergrenze (%)
-  cooldownS: 60,       // Mindestabstand zwischen zwei Eingriffen je Richtung (s)
+  cooldownS: 300,      // Mindestabstand zwischen zwei Eingriffen je Richtung (s)
   maxDataAgeMs: 90_000, // Frische-Gate: Sensor-Daten älter als das → erst refreshen
   refreshWaitMs: 3_000, // Wartezeit auf frische Frames nach lsConnect/join
 };
