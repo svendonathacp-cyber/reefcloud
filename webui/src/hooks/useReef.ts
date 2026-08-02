@@ -9,6 +9,7 @@ export function useReef(pollMs = 4000) {
   const [tank, setTank] = useState<string | null>(null);
   const [tunnel, setTunnel] = useState<{ connected: boolean; url?: string }>({ connected: false });
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); // bis zur ersten (erfolglosen oder erfolgreichen) Antwort
   const [captureOn, setCaptureOnState] = useState(false);
   const [frames, setFrames] = useState<CaptureFrame[]>([]);
 
@@ -24,6 +25,8 @@ export function useReef(pollMs = 4000) {
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -72,5 +75,18 @@ export function useReef(pollMs = 4000) {
     }
   }, [loadCapture]);
 
-  return { devices, now, tank, tunnel, error, captureOn, frames, sendCommand, setCapture };
+  const setNickname = useCallback(async (serial: string, name: string) => {
+    const r = await fetch('/api/devices/name', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ serial, name }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok !== true) throw new Error(j.error || `HTTP ${r.status}`);
+    // Sofort lokal spiegeln, damit Kachel/Detail ohne Poll-Verzögerung reagieren
+    setDevices((ds) => ds.map((d) => (d.serial === serial ? { ...d, customName: name || undefined } : d)));
+    setTimeout(loadDevices, 600); // Server-Stand zeitnah nachladen
+  }, [loadDevices]);
+
+  return { devices, now, tank, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname };
 }

@@ -22,7 +22,7 @@ export default function ReefHeader({ title, tunnel, online, total, captureOn, on
   const tunnelHost = tunnel.url ? new URL(tunnel.url).host : '';
   const hostParam = { host: tunnelHost ? ` (${tunnelHost})` : '' };
   return (
-    <header className="sticky top-0 z-10 border-b border-border bg-white/85 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-border bg-[#0b1220]/85 backdrop-blur">
       <div className="flex items-center gap-3 px-4 py-2.5">
         <img src={logoUrl} alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
         <h1 className="truncate text-sm font-semibold">{title}</h1>
@@ -31,7 +31,7 @@ export default function ReefHeader({ title, tunnel, online, total, captureOn, on
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-                  tunnel.connected ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  tunnel.connected ? 'bg-emerald-400/10 text-emerald-400' : 'bg-amber-400/10 text-amber-400'
                 }`}>
                   {tunnel.connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
                   <span className="hidden sm:inline">{t(tunnel.connected ? 'header.vpsConnected' : 'header.vpsDisconnected')}</span>

@@ -21,8 +21,6 @@ export const de = {
   'header.online': '{online}/{total} online',
 
   // Seitenleiste / Navigation
-  'nav.tankList': 'Aquarienliste',
-  'nav.tank': 'Aquarium',
   'nav.dashboard': 'Dashboard',
   'nav.log': 'Protokoll',
   'nav.devices': 'Geräte',
@@ -36,6 +34,14 @@ export const de = {
   'home.logMonitor': 'Protokoll-Monitor',
   'home.apiError': 'API nicht erreichbar ({error}) — läuft die reef-cloud-v2 mit Web-Modul auf Port 8080? Die Ansicht aktualisiert sich automatisch, sobald sie erreichbar ist.',
   'home.noDevices': 'Noch keine Geräte bekannt — sie erscheinen nach ihrem Login an der Cloud.',
+  'home.loading': 'Geräte werden geladen …',
+
+  // Geräte-Status (Kachel/Detail)
+  'status.online': 'online',
+  'status.offline': 'offline',
+  'status.reachable': 'erreichbar',
+  'status.reachableLong': 'erreichbar, aber nicht eingeloggt',
+  'status.noLiveData': 'keine Live-Daten',
 
   // Gerätefamilien
   'family.basepump': 'Rückförderpumpe',
@@ -127,6 +133,16 @@ export const de = {
   'detail.ipUnknown': 'IP unbekannt',
   'detail.lastSeen': 'zuletzt gesehen vor {s} s',
 
+  // Spitznamen
+  'nickname.edit': 'Spitzname bearbeiten',
+  'nickname.set': 'Namen vergeben',
+  'nickname.placeholder': 'Spitzname (max. 40 Zeichen)',
+  'nickname.saved': 'Spitzname gespeichert',
+  'nickname.removed': 'Spitzname entfernt',
+
+  // Geräte-Kachel
+  'tile.openDetail': 'Details zu {name} öffnen',
+
   // Wave-Zeitplan-Editor
   'waveEditor.sent': 'Zeitplan an die Pumpe gesendet',
   'waveEditor.power': 'Leistung',
@@ -192,8 +208,6 @@ export const en: Record<MessageKey, string> = {
   'header.capture': 'Capture',
   'header.online': '{online}/{total} online',
 
-  'nav.tankList': 'Tank list',
-  'nav.tank': 'Tank',
   'nav.dashboard': 'Dashboard',
   'nav.log': 'Log',
   'nav.devices': 'Devices',
@@ -205,6 +219,13 @@ export const en: Record<MessageKey, string> = {
   'home.logMonitor': 'Log monitor',
   'home.apiError': 'API not reachable ({error}) — is reef-cloud-v2 running with the web module on port 8080? The view refreshes automatically once it is reachable.',
   'home.noDevices': 'No devices known yet — they appear after logging in to the cloud.',
+  'home.loading': 'Loading devices …',
+
+  'status.online': 'online',
+  'status.offline': 'offline',
+  'status.reachable': 'reachable',
+  'status.reachableLong': 'reachable, but not logged in',
+  'status.noLiveData': 'no live data',
 
   'family.basepump': 'Return pump',
   'family.wave': 'Wave pump',
@@ -284,6 +305,14 @@ export const en: Record<MessageKey, string> = {
   'detail.firmwareUnknown': 'Firmware unknown',
   'detail.ipUnknown': 'IP unknown',
   'detail.lastSeen': 'last seen {s} s ago',
+
+  'nickname.edit': 'Edit nickname',
+  'nickname.set': 'Set a name',
+  'nickname.placeholder': 'Nickname (max. 40 characters)',
+  'nickname.saved': 'Nickname saved',
+  'nickname.removed': 'Nickname removed',
+
+  'tile.openDetail': 'Open details for {name}',
 
   'waveEditor.sent': 'Schedule sent to the pump',
   'waveEditor.power': 'Power',

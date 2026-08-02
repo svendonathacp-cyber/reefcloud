@@ -15,19 +15,25 @@ import { useT } from '@/i18n/I18nContext';
 import type { MessageKey } from '@/i18n/messages';
 import type { CommandFn, DeviceSnapshot } from '@/types/reef';
 
-export const FAMILY_META: Record<string, { nameKey: MessageKey; Icon: LucideIcon }> = {
-  basepump: { nameKey: 'family.basepump', Icon: Droplets },
-  wave: { nameKey: 'family.wave', Icon: Waves },
-  roller: { nameKey: 'family.roller', Icon: Scroll },
-  flare: { nameKey: 'family.flare', Icon: Lightbulb },
-  levelSensor: { nameKey: 'family.levelSensor', Icon: Gauge },
-  salinity: { nameKey: 'family.salinity', Icon: FlaskConical },
-  thermo: { nameKey: 'family.thermo', Icon: Thermometer },
-  doser: { nameKey: 'family.doser', Icon: Beaker },
-  level: { nameKey: 'family.level', Icon: Ruler },
-  powerswitcher: { nameKey: 'family.powerswitcher', Icon: Plug },
-  unknown: { nameKey: 'family.unknown', Icon: Cpu },
+// Dezente Familien-Farbkodierung (Hex, wird per Inline-Style gesetzt)
+export const FAMILY_META: Record<string, { nameKey: MessageKey; Icon: LucideIcon; color: string }> = {
+  basepump: { nameKey: 'family.basepump', Icon: Droplets, color: '#38bdf8' },
+  wave: { nameKey: 'family.wave', Icon: Waves, color: '#22d3ee' },
+  roller: { nameKey: 'family.roller', Icon: Scroll, color: '#fbbf24' },
+  flare: { nameKey: 'family.flare', Icon: Lightbulb, color: '#a78bfa' },
+  levelSensor: { nameKey: 'family.levelSensor', Icon: Gauge, color: '#34d399' },
+  salinity: { nameKey: 'family.salinity', Icon: FlaskConical, color: '#2dd4bf' },
+  thermo: { nameKey: 'family.thermo', Icon: Thermometer, color: '#fb923c' },
+  doser: { nameKey: 'family.doser', Icon: Beaker, color: '#f472b6' },
+  level: { nameKey: 'family.level', Icon: Ruler, color: '#4ade80' },
+  powerswitcher: { nameKey: 'family.powerswitcher', Icon: Plug, color: '#facc15' },
+  unknown: { nameKey: 'family.unknown', Icon: Cpu, color: '#94a3b8' },
 };
+
+// Anzeigename: Spitzname prominent, sonst Originalname aus dem Tank-Modell
+export function deviceDisplayName(dev: DeviceSnapshot): string {
+  return dev.customName || dev.name || '';
+}
 
 export const WAVE_MODE_KEYS: Record<number, MessageKey> = {
   1: 'waveMode.1', 2: 'waveMode.2', 3: 'waveMode.3', 4: 'waveMode.4',
@@ -40,7 +46,7 @@ const obj = (v: unknown): Record<string, unknown> =>
 
 // ---------- gemeinsame Bausteine ----------
 
-function Ago({ lastSeen, now }: { lastSeen: number; now: number }) {
+export function Ago({ lastSeen, now }: { lastSeen: number; now: number }) {
   const t = useT();
   if (!lastSeen) return <>{t('time.never')}</>;
   const s = Math.max(0, Math.round((now - lastSeen) / 1000));
