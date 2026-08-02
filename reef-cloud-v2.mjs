@@ -906,6 +906,10 @@ const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
 // Flare-Programme (Laufzeitdaten, in .gitignore): programs/<serial>.json
 const PROGRAM_DIR = path.join(__dirname, 'programs');
 
+// Serial-Validierung: <serial> wird als Dateiname programs/<serial>.json
+// verwendet — ohne Einschränkung wäre Path-Traversal über "../../" möglich.
+const isValidSerial = (s) => /^[A-Za-z0-9_-]{1,32}$/.test(s);
+
 function loadProgram(serial) {
   try { return JSON.parse(fs.readFileSync(path.join(PROGRAM_DIR, `${serial}.json`), 'utf8')); }
   catch { return null; }
@@ -1013,6 +1017,7 @@ const webServer = http.createServer(async (req, res) => {
       // Write-Format aus einem App-Mitschnitt entschlüsselt ist (live_capture).
       if (req.method === 'GET') {
         const serial = u.searchParams.get('serial') || '';
+        if (!isValidSerial(serial)) throw new Error('serial ungültig ([A-Za-z0-9_-]{1,32} erwartet)');
         // Eigenes gespeichertes Programm hat Vorrang; sonst das echte
         // Lampenprogramm (preciseData), damit der Editor damit vorbefüllt
         const custom = loadProgram(serial);
@@ -1026,7 +1031,7 @@ const webServer = http.createServer(async (req, res) => {
       if (req.method === 'POST') {
         const body = JSON.parse(await webReadBody(req) || '{}');
         const serial = String(body.serial || '');
-        if (!serial) throw new Error('serial fehlt');
+        if (!isValidSerial(serial)) throw new Error('serial ungültig ([A-Za-z0-9_-]{1,32} erwartet)');
         const program = sanitizeProgram(body.program);
         fs.mkdirSync(PROGRAM_DIR, { recursive: true });
         fs.writeFileSync(path.join(PROGRAM_DIR, `${serial}.json`), JSON.stringify(program));
