@@ -214,19 +214,19 @@ export default function FlareProgramEditor({ serial }: Props) {
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full touch-none select-none rounded-lg border border-border/60 bg-white"
+        className="w-full touch-none select-none rounded-lg border border-border/60 bg-[#0d1526]"
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
       >
         {/* horizontale Hilfslinien */}
         {[0.25, 0.5, 0.75].map((v) => (
-          <line key={v} x1={ML} x2={W - MR} y1={yOf(v)} y2={yOf(v)} stroke="#e5edf3" strokeDasharray="4 4" />
+          <line key={v} x1={ML} x2={W - MR} y1={yOf(v)} y2={yOf(v)} stroke="#1e293b" strokeDasharray="4 4" />
         ))}
         {/* Zeitachse */}
         {Array.from({ length: 7 }, (_, i) => i * 240).map((time) => (
           <g key={time}>
-            <line x1={xOf(time)} x2={xOf(time)} y1={MT} y2={H - MB} stroke="#eef3f7" />
+            <line x1={xOf(time)} x2={xOf(time)} y1={MT} y2={H - MB} stroke="#172033" />
             <text x={xOf(time)} y={H - 10} textAnchor="middle" fontSize="13" fill="#8aa0b4">{fmtT(time)}</text>
           </g>
         ))}
@@ -254,7 +254,7 @@ export default function FlareProgramEditor({ serial }: Props) {
                 y={yOf(pt.l[ch] ?? 0) - size / 2}
                 width={size} height={size}
                 fill={c.color}
-                stroke={active ? '#0f172a' : 'white'}
+                stroke={active ? '#e2e8f0' : 'white'}
                 strokeWidth={active ? 1.5 : 1}
                 className="cursor-grab"
                 onPointerDown={onHandleDown(i, ch)}
@@ -285,7 +285,7 @@ export default function FlareProgramEditor({ serial }: Props) {
           <div className="mb-3 flex items-center justify-center gap-3 text-sm">
             <span className="text-muted-foreground">{t('flareEditor.point')}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(-5)}>−5 min</Button>
-            <span className="w-16 text-center text-lg font-bold text-[#009deb]">{fmtT(selPt.t)}</span>
+            <span className="w-16 text-center text-lg font-bold text-[#38bdf8]">{fmtT(selPt.t)}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(5)}>+5 min</Button>
           </div>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">

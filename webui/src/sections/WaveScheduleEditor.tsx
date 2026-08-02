@@ -160,7 +160,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
   return (
     <div className="mt-3">
       {/* Tagesleiste */}
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full select-none rounded-lg border border-border/60 bg-white">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full select-none rounded-lg border border-border/60 bg-[#0d1526]">
         {sorted.map((e, i) => {
           const end = sorted[i + 1]?.time ?? 1440;
           const meta = modeMeta(e.mode);
@@ -171,7 +171,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
               <rect
                 x={xOf(e.time)} y={MT} width={Math.max(2, xOf(end) - xOf(e.time))} height={H - MT - MB}
                 fill={meta.color} opacity={active ? 1 : 0.65}
-                stroke={active ? '#0f172a' : 'none'} strokeWidth={active ? 1.5 : 0}
+                stroke={active ? '#e2e8f0' : 'none'} strokeWidth={active ? 1.5 : 0}
               >
                 <title>{t('waveEditor.blockFrom', { mode: modeName, time: fmtT(e.time) })}</title>
               </rect>
@@ -197,7 +197,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
                 key={m.id}
                 onClick={() => setMode(m.id)}
                 className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${
-                  selEntry.mode === m.id ? 'border-[#009deb] bg-[#e6f4fd] text-[#009deb]' : 'border-border text-muted-foreground'
+                  selEntry.mode === m.id ? 'border-[#009deb] bg-[#009deb]/15 text-[#38bdf8]' : 'border-border text-muted-foreground'
                 }`}
               >
                 <span className="mx-auto mb-1 block h-3 w-8 rounded-sm" style={{ background: m.color }} />
@@ -210,7 +210,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
           <div className="flex items-center justify-center gap-3 text-sm">
             <span className="text-muted-foreground">{t('waveEditor.starts')}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(-5)}>−5 min</Button>
-            <span className="w-16 text-center text-lg font-bold text-[#009deb]">{fmtT(selEntry.time)}</span>
+            <span className="w-16 text-center text-lg font-bold text-[#38bdf8]">{fmtT(selEntry.time)}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(5)}>+5 min</Button>
           </div>
 

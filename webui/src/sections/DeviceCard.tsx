@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import {
-  Activity, Beaker, Cpu, Droplets, FlaskConical, Gauge, Lightbulb,
+  Beaker, Cpu, Droplets, FlaskConical, Gauge, Lightbulb,
   Plug, Ruler, Scroll, Thermometer, Waves, type LucideIcon,
 } from 'lucide-react';
 import WaveScheduleEditor from './WaveScheduleEditor';
@@ -15,19 +14,25 @@ import { useT } from '@/i18n/I18nContext';
 import type { MessageKey } from '@/i18n/messages';
 import type { CommandFn, DeviceSnapshot } from '@/types/reef';
 
-export const FAMILY_META: Record<string, { nameKey: MessageKey; Icon: LucideIcon }> = {
-  basepump: { nameKey: 'family.basepump', Icon: Droplets },
-  wave: { nameKey: 'family.wave', Icon: Waves },
-  roller: { nameKey: 'family.roller', Icon: Scroll },
-  flare: { nameKey: 'family.flare', Icon: Lightbulb },
-  levelSensor: { nameKey: 'family.levelSensor', Icon: Gauge },
-  salinity: { nameKey: 'family.salinity', Icon: FlaskConical },
-  thermo: { nameKey: 'family.thermo', Icon: Thermometer },
-  doser: { nameKey: 'family.doser', Icon: Beaker },
-  level: { nameKey: 'family.level', Icon: Ruler },
-  powerswitcher: { nameKey: 'family.powerswitcher', Icon: Plug },
-  unknown: { nameKey: 'family.unknown', Icon: Cpu },
+// Dezente Familien-Farbkodierung (Hex, wird per Inline-Style gesetzt)
+export const FAMILY_META: Record<string, { nameKey: MessageKey; Icon: LucideIcon; color: string }> = {
+  basepump: { nameKey: 'family.basepump', Icon: Droplets, color: '#38bdf8' },
+  wave: { nameKey: 'family.wave', Icon: Waves, color: '#22d3ee' },
+  roller: { nameKey: 'family.roller', Icon: Scroll, color: '#fbbf24' },
+  flare: { nameKey: 'family.flare', Icon: Lightbulb, color: '#a78bfa' },
+  levelSensor: { nameKey: 'family.levelSensor', Icon: Gauge, color: '#34d399' },
+  salinity: { nameKey: 'family.salinity', Icon: FlaskConical, color: '#2dd4bf' },
+  thermo: { nameKey: 'family.thermo', Icon: Thermometer, color: '#fb923c' },
+  doser: { nameKey: 'family.doser', Icon: Beaker, color: '#f472b6' },
+  level: { nameKey: 'family.level', Icon: Ruler, color: '#4ade80' },
+  powerswitcher: { nameKey: 'family.powerswitcher', Icon: Plug, color: '#facc15' },
+  unknown: { nameKey: 'family.unknown', Icon: Cpu, color: '#94a3b8' },
 };
+
+// Anzeigename: Spitzname prominent, sonst Originalname aus dem Tank-Modell
+export function deviceDisplayName(dev: DeviceSnapshot): string {
+  return dev.customName || dev.name || '';
+}
 
 export const WAVE_MODE_KEYS: Record<number, MessageKey> = {
   1: 'waveMode.1', 2: 'waveMode.2', 3: 'waveMode.3', 4: 'waveMode.4',
@@ -40,7 +45,7 @@ const obj = (v: unknown): Record<string, unknown> =>
 
 // ---------- gemeinsame Bausteine ----------
 
-function Ago({ lastSeen, now }: { lastSeen: number; now: number }) {
+export function Ago({ lastSeen, now }: { lastSeen: number; now: number }) {
   const t = useT();
   if (!lastSeen) return <>{t('time.never')}</>;
   const s = Math.max(0, Math.round((now - lastSeen) / 1000));
@@ -245,45 +250,6 @@ function GenericBody({ dev }: { dev: DeviceSnapshot }) {
       {rows.slice(0, 8).map(([k, v]) => <Stat key={k} label={k} value={v} />)}
       {rows.length > 8 && <p className="text-xs text-muted-foreground">{t('generic.moreValues', { n: rows.length - 8 })}</p>}
     </div>
-  );
-}
-
-// ---------- Karten-Shell ----------
-
-interface Props {
-  dev: DeviceSnapshot;
-  now: number;
-  sendCommand: CommandFn;
-}
-
-export default function DeviceCard({ dev, now, sendCommand }: Props) {
-  const t = useT();
-  const meta = FAMILY_META[dev.family] ?? FAMILY_META.unknown;
-  const { Icon } = meta;
-  return (
-    <Card className={`border-border/70 bg-card/80 shadow-lg shadow-black/20 transition-opacity ${dev.online ? '' : 'opacity-55'}`}>
-      <CardHeader className="flex-row items-center gap-3 space-y-0 pb-3">
-        <div className="rounded-lg bg-gradient-to-br from-[#009deb]/25 to-[#17c3d6]/25 p-2">
-          <Icon className="h-5 w-5 text-[#17c3d6]" />
-        </div>
-        <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate font-semibold">{dev.name ?? t(meta.nameKey)}</p>
-          <p className="truncate font-mono text-xs text-muted-foreground">{dev.serial}</p>
-        </div>
-        <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dev.online ? 'bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.5)]' : 'bg-muted-foreground/50'}`} />
-      </CardHeader>
-      <CardContent>
-        {dev.family === 'basepump' && <BasepumpBody dev={dev} sendCommand={sendCommand} />}
-        {dev.family === 'wave' && <WaveBody dev={dev} sendCommand={sendCommand} />}
-        {dev.family === 'roller' && <RollerBody dev={dev} sendCommand={sendCommand} />}
-        {dev.family === 'flare' && <FlareBody dev={dev} />}
-        {!['basepump', 'wave', 'roller', 'flare'].includes(dev.family) && <GenericBody dev={dev} />}
-        <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-          <span>{dev.firmware ? t('detail.firmware', { v: dev.firmware }) : t('detail.firmwareUnknown')} · {dev.ip || t('detail.ipUnknown')}</span>
-          <span className="flex items-center gap-1"><Activity className="h-3 w-3" /><Ago lastSeen={dev.lastSeen} now={now} /></span>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

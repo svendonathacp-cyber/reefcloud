@@ -1,42 +1,55 @@
-import { ChevronDown, LayoutDashboard, ScrollText } from 'lucide-react';
-import { FAMILY_META } from './DeviceCard';
+import { LayoutDashboard, ScrollText } from 'lucide-react';
+import { deviceDisplayName, FAMILY_META } from './DeviceCard';
+import { statusOf } from './DeviceTile';
 import { useT } from '@/i18n/I18nContext';
 import type { DeviceSnapshot } from '@/types/reef';
 import logoUrl from '@/assets/logo.svg';
 
 interface Props {
-  tank: string | null;
   devices: DeviceSnapshot[];
   selected: string; // 'dashboard' | 'log' | serial
   onSelect: (id: string) => void;
 }
 
-function NavRow({ id, selected, onSelect, Icon, label, online }: {
+function NavRow({ id, selected, onSelect, Icon, label, dot }: {
   id: string; selected: string; onSelect: (id: string) => void;
-  Icon: React.ComponentType<{ className?: string }>; label: string; online?: boolean;
+  Icon: React.ComponentType<{ className?: string }>; label: string; dot?: 'online' | 'reachable' | 'offline';
 }) {
   const active = selected === id;
   return (
     <button
       onClick={() => onSelect(id)}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-        active ? 'bg-[#e6f4fd] font-medium text-[#009deb]' : 'text-foreground/80 hover:bg-secondary'
-      } ${online === false ? 'opacity-50' : ''}`}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+        active ? 'bg-[#009deb]/15 font-medium text-[#38bdf8]' : 'text-foreground/80 hover:bg-secondary'
+      } ${dot && dot !== 'online' ? 'opacity-50' : ''}`}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {online !== undefined && (
-        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${online ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+      {dot && (
+        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+          dot === 'online' ? 'bg-emerald-400' : dot === 'reachable' ? 'border border-amber-400' : 'border border-muted-foreground/40'
+        }`} />
       )}
     </button>
   );
 }
 
-// Linke Seitenleiste im Stil der Reef-Factory-Web-Cloud
-export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
+// Linke Seitenleiste: Dashboard + Protokoll, darunter flache Geräteliste
+// (nach Familie gruppiert — es gibt nur ein Aquarium, keine Tank-Ebene mehr)
+export default function Sidebar({ devices, selected, onSelect }: Props) {
   const t = useT();
+
+  // Familien in Reihenfolge ihres ersten Auftretens (devices ist vorsortiert)
+  const groups: { family: string; items: DeviceSnapshot[] }[] = [];
+  for (const d of devices) {
+    const g = groups.find((x) => x.family === d.family);
+    if (g) g.items.push(d);
+    else groups.push({ family: d.family, items: [d] });
+  }
+
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-[#f6f9fb]">
+    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-[#0d1526]">
       <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
         <img src={logoUrl} alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
         <div className="leading-tight">
@@ -47,33 +60,35 @@ export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
         </div>
       </div>
 
-      <div className="px-3 pb-1 pt-2">
-        <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('nav.tankList')}</p>
-        <button className="flex w-full items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium shadow-sm">
-          <span className="min-w-0 flex-1 truncate text-left">{tank ?? t('nav.tank')}</span>
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        </button>
-      </div>
-
       <nav className="space-y-0.5 px-3 pt-2">
         <NavRow id="dashboard" selected={selected} onSelect={onSelect} Icon={LayoutDashboard} label={t('nav.dashboard')} />
         <NavRow id="log" selected={selected} onSelect={onSelect} Icon={ScrollText} label={t('nav.log')} />
       </nav>
 
       <p className="px-4 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('nav.devices')}</p>
-      <div className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4">
-        {devices.map((d) => {
-          const meta = FAMILY_META[d.family] ?? FAMILY_META.unknown;
+      <div className="flex-1 space-y-3 overflow-y-auto px-3 pb-4">
+        {groups.map((g) => {
+          const meta = FAMILY_META[g.family] ?? FAMILY_META.unknown;
           return (
-            <NavRow
-              key={d.serial}
-              id={d.serial}
-              selected={selected}
-              onSelect={onSelect}
-              Icon={meta.Icon}
-              label={d.name ?? t(meta.nameKey)}
-              online={d.online}
-            />
+            <div key={g.family}>
+              <p className="flex items-center gap-1.5 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
+                {t(meta.nameKey)}
+              </p>
+              <div className="space-y-0.5">
+                {g.items.map((d) => (
+                  <NavRow
+                    key={d.serial}
+                    id={d.serial}
+                    selected={selected}
+                    onSelect={onSelect}
+                    Icon={meta.Icon}
+                    label={deviceDisplayName(d) || t(meta.nameKey)}
+                    dot={statusOf(d)}
+                  />
+                ))}
+              </div>
+            </div>
           );
         })}
       </div>

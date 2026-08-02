@@ -73,35 +73,35 @@
     @apply bg-background text-foreground;
   }
 }
-/* ---------- reefcloud Theme (hell, Reef-Factory-Web-Cloud-Anmutung) ---------- */
+/* ---------- reefcloud Theme (dunkel, Tiefsee-Anmutung #0b1220-Familie) ---------- */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 208 35% 16%;
-    --card: 0 0% 100%;
-    --card-foreground: 208 35% 16%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 208 35% 16%;
-    --primary: 199 100% 46%;
+    --background: 222 47% 8%;            /* #0b1220 */
+    --foreground: 210 40% 96%;
+    --card: 222 44% 11%;                 /* #101a2e */
+    --card-foreground: 210 40% 96%;
+    --popover: 222 44% 11%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 199 100% 46%;             /* reef-blau #009deb */
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 30% 95%;
-    --secondary-foreground: 208 35% 20%;
-    --muted: 210 30% 96%;
-    --muted-foreground: 210 14% 46%;
-    --accent: 186 80% 42%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 92%;
+    --muted: 217 33% 15%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 186 80% 42%;               /* reef-cyan #17c3d6 */
     --accent-foreground: 0 0% 100%;
-    --destructive: 8 66% 48%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 211 28% 90%;
-    --input: 211 28% 86%;
-    --ring: 199 100% 46%;
+    --border: 217 30% 20%;
+    --input: 217 30% 26%;
+    --ring: 199 100% 50%;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     background-image:
-      radial-gradient(1200px 420px at 85% -10%, hsl(199 100% 46% / 0.07), transparent 60%),
-      radial-gradient(900px 380px at 5% -10%, hsl(186 80% 42% / 0.06), transparent 60%);
+      radial-gradient(1200px 420px at 85% -10%, hsl(199 100% 46% / 0.10), transparent 60%),
+      radial-gradient(900px 380px at 5% -10%, hsl(186 80% 42% / 0.08), transparent 60%);
     background-attachment: fixed;
   }
 }
