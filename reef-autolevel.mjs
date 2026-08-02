@@ -53,6 +53,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame, encodeFrame, captureFrame }) {
   const FILE = path.join(dir, 'autolevel.json');
+  const HISTORY_FILE = path.join(dir, 'autolevel-history.json');
   const config = { ...AUTOLEVEL_DEFAULTS };
   // { ts, reason: 'tooFull'|'tooEmpty', sensorSerial, oldSpeed, newSpeed }
   // { ts, reason: 'staleData', sensorSerial } — übersprungene Anpassung
@@ -60,6 +61,25 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
   let lastActionTs = 0;
   const lastAdjustAt = { up: 0, down: 0 }; // Cooldown pro Richtung
   let checking = false; // Reentrancy-Guard (check ist seit Frische-Gate async)
+
+  // History persistent halten (Pi läuft 24/7, Neustarts sollen nichts
+  // verlieren): tolerant laden, atomar schreiben (tmp+rename wie autolevel.json).
+  try {
+    const rawH = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    if (Array.isArray(rawH)) {
+      for (const e of rawH.slice(-HISTORY_MAX)) {
+        if (e && Number.isFinite(e.ts) && typeof e.reason === 'string') history.push(e);
+      }
+    }
+  } catch { /* Datei optional/defekt → leere History */ }
+
+  function saveHistory() {
+    try {
+      const tmp = HISTORY_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(history, null, 2) + '\n');
+      fs.renameSync(tmp, HISTORY_FILE);
+    } catch (e) { log(`!! autolevel-history.json nicht geschrieben: ${e.message}`); }
+  }
 
   // Tolerant laden: fehlende/defekte Datei → Defaults; ungültige Felder
   // werden einzeln verworfen (nie die ganze Config). Bestehende autolevel.json
@@ -127,6 +147,7 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
   function pushHistory(entry) {
     history.push(entry);
     if (history.length > HISTORY_MAX) history.shift();
+    saveHistory();
   }
 
   // Übersprungene Anpassung protokollieren — gedrosselt, damit der Ringpuffer

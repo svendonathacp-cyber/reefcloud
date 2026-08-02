@@ -28,6 +28,8 @@ programs/
 names.json
 device-ips.json
 device-props.json
+device-states.json
 
 # Ablaufschacht-Stabilisierung (Laufzeitdaten)
 autolevel.json
+autolevel-history.json

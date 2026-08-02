@@ -355,6 +355,42 @@ if (tankModel) {
 // Persistierte IPs ins Meta seeden — damit die Probe direkt nach dem Start arbeitet
 for (const [serial, ip] of knownIps) metaFor(serial).ip = ip;
 
+// Letzte bekannte Geräte-States persistent halten: nach einem Neustart zeigt
+// die UI sofort die zuletzt gemeldeten Werte (Temperaturen, Sensor-Stände …)
+// statt leerer Karten, bis die ersten neuen Frames kommen (Pi = Dauerbetrieb).
+// Laufzeitdaten — steht in .gitignore. Schreiben atomar + entprellt (30 s:
+// Flares melden alle ~5 s, die SD-Karte des Pi dankt es).
+const STATES_FILE = path.join(__dirname, 'device-states.json');
+try {
+  for (const [serial, saved] of Object.entries(JSON.parse(fs.readFileSync(STATES_FILE, 'utf8')))) {
+    if (!saved || typeof saved !== 'object') continue;
+    const m = metaFor(serial);
+    if (saved.state && typeof saved.state === 'object' && !Array.isArray(saved.state)) m.state = saved.state;
+    if (typeof saved.firmware === 'string') m.firmware = saved.firmware;
+    if (Number.isFinite(saved.lastSeen)) m.lastSeen = saved.lastSeen;
+  }
+} catch { /* Datei optional oder defekt */ }
+
+let statesSaveTimer = null;
+function saveStates() {
+  if (statesSaveTimer) return;
+  statesSaveTimer = setTimeout(() => {
+    statesSaveTimer = null;
+    try {
+      const out = {};
+      for (const [serial, m] of deviceMeta) {
+        if (m.state && Object.keys(m.state).length) {
+          out[serial] = { state: m.state, firmware: m.firmware, lastSeen: m.lastSeen };
+        }
+      }
+      const tmp = STATES_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(out) + '\n');
+      fs.renameSync(tmp, STATES_FILE);
+    } catch (e) { log(`!! device-states.json nicht geschrieben: ${e.message}`); }
+  }, 30000);
+  statesSaveTimer.unref();
+}
+
 // ---------- Erreichbarkeits-Ping („Hello-Ping") für offline Geräte ----------
 // Die Geräte sind WS-Clients — der Server kann keine WS-Verbindung ZUM Gerät
 // öffnen. Stattdessen TCP-Connect-Versuche (node:net, kein ICMP, keine neuen
@@ -521,7 +557,7 @@ function updateState(serial, cls, method, payloadBuf) {
     const j = JSON.parse(payloadBuf.toString('utf8').replace(/\0+$/, ''));
     if (j && typeof j === 'object') {
       m.state = { ...m.state, ...j };
-      if (JSON.stringify(m.state) !== before) announce(serial);
+      if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
       return;
     }
   } catch { /* kein JSON → binärer Altgeräte-Frame, unten */ }
@@ -534,16 +570,16 @@ function updateState(serial, cls, method, payloadBuf) {
       // Skala + Layout [on][temp][9ch][res] per Bridge-Mitschnitt-Verifikation bestätigt)
       const channels = [...pl.subarray(2, 11)].map((v) => Math.round((v / 255) * 100));
       m.state = { ...m.state, on: pl[0] !== 0, ledTempC: pl[1], channels };
-      if (JSON.stringify(m.state) !== before) announce(serial);
+      if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
     } else if (method === 'temp' && pl.length >= 1) {
       m.state = { ...m.state, ledTempC: pl[0] };
-      if (JSON.stringify(m.state) !== before) announce(serial);
+      if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
     } else if (method === 'preciseEdit' && payloadBuf.length >= 4) {
       // Programm-Versionszeiger der Lampe (u32BE; Originalpuffer, kein NUL-Strip —
       // der Zeiger kann legitimerweise auf 0x00 enden). preciseData (das eigentliche
       // Programm) wird einmalig als Hex geloggt, bis das Layout final entschlüsselt ist.
       m.state = { ...m.state, precisePointer: payloadBuf.readUInt32BE(0) };
-      if (JSON.stringify(m.state) !== before) announce(serial);
+      if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
     } else if (method === 'preciseData' && payloadBuf.length > 40) {
       // Komplettes Lichtprogramm der Lampe (wird nach Join gepusht) — Layout
       // vollständig entschlüsselt 01.08. (Verifikation gegen App-Export-JSON):
@@ -665,7 +701,7 @@ function updateState(serial, cls, method, payloadBuf) {
   }
   if (altParsed) {
     m.state = { ...m.state, ...altParsed };
-    if (JSON.stringify(m.state) !== before) announce(serial);
+    if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
     return;
   }
   // 3) Unbekannte Binärframes einmal je Gerät/Methode als Hex loggen (Analyse)
