@@ -1117,7 +1117,9 @@ const webServer = http.createServer(async (req, res) => {
       } catch { /* fällt auf index.html zurück */ }
     }
     const fp = path.normalize(path.join(WEBUI_DIR, rel));
-    if (!fp.startsWith(WEBUI_DIR)) { res.writeHead(403); res.end(); return; }
+    // Guard mit Separator bzw. exakter Gleichheit: ein Geschwister-Verzeichnis
+    // mit gemeinsamem Präfix (z. B. webui/dist-evil) darf nicht durchrutschen.
+    if (fp !== WEBUI_DIR && !fp.startsWith(WEBUI_DIR + path.sep)) { res.writeHead(403); res.end(); return; }
     fs.readFile(fp, (err, data) => {
       if (err) {
         fs.readFile(path.join(WEBUI_DIR, 'index.html'), (e2, idx) => {
