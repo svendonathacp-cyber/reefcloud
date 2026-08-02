@@ -10,6 +10,7 @@ export interface DeviceSnapshot {
   online: boolean;
   reachable?: boolean; // per TCP erreichbar, auch wenn nicht eingeloggt (Hello-Ping)
   state: Record<string, unknown>;
+  alarmWhen?: 'above' | 'below'; // Level-Sensor: geräteseitige Alarm-Richtung (POST /api/devices/props)
   lastSeen: number; // Epoch-ms
 }
 
@@ -36,6 +37,7 @@ export interface CaptureResponse {
 
 export type CommandFn = (serial: string, action: string, params?: Record<string, unknown>) => Promise<void>;
 export type SetNicknameFn = (serial: string, name: string) => Promise<void>;
+export type SetDevicePropsFn = (serial: string, alarmWhen: 'above' | 'below') => Promise<void>;
 
 // Onboarding: serverseitiger WLAN-Scan, gespiegelt zu GET /api/onboarding/scan.
 export interface OnboardingNetwork {
@@ -60,25 +62,35 @@ export interface AutolevelConfig {
   minSpeed: number;
   maxSpeed: number;
   cooldownS: number;
+  maxDataAgeMs: number; // Frische-Gate: max. Alter der Sensor-Datenframes
+  refreshWaitMs: number; // Wartezeit auf frische Frames nach lsConnect/join
 }
 
-export type AutolevelReason = 'alarmHigh' | 'alarmLow';
+// tooFull  = Schacht zu voll (Sensor oben covered)      → Speed runter
+// tooEmpty = Schacht zu leer (Sensor unten nicht covered) → Speed rauf
+// staleData = Anpassung übersprungen — keine frischen Sensordaten
+export type AutolevelReason = 'tooFull' | 'tooEmpty' | 'staleData';
 
 export interface AutolevelHistoryEntry {
   ts: number; // Epoch-ms
   reason: AutolevelReason;
   sensorSerial: string;
-  oldSpeed: number;
-  newSpeed: number;
+  oldSpeed?: number; // fehlt bei staleData (kein Eingriff erfolgt)
+  newSpeed?: number;
 }
+
+// covered: true = Wasser über Sensor, false = Wasser unter Sensor, 'unknown' = unklar
+export type CoveredState = boolean | 'unknown';
 
 export interface AutolevelStatus {
   running: boolean;
   lastActionTs: number;
   currentSpeed: number | null;
   pumpOnline: boolean;
-  highState: string; // 'ok' | 'alarmLow' | 'alarmHigh' | 'unknown'
-  lowState: string;
+  highCovered: CoveredState;
+  lowCovered: CoveredState;
+  highDataAgeS?: number | null; // Sekunden seit letztem lsRefresh/data (null = nie)
+  lowDataAgeS?: number | null;
   cooldownS: number;
   cooldownRemainingS?: { up: number; down: number };
 }

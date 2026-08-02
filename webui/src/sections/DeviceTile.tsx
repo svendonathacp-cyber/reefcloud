@@ -102,6 +102,30 @@ function TileValues({ dev }: { dev: DeviceSnapshot }) {
     );
   }
 
+  if (dev.family === 'levelSensor') {
+    // Eigene Darstellung statt generischer Rohwerte: großer Wasserstand aus
+    // covered, Alarm-Badge in Rot (nie grün!). covered/alarm kommen vom
+    // lsRefresh-Parser (true | false | 'unknown').
+    const covered = dev.state.covered;
+    const alarm = dev.state.alarm;
+    const label = covered === true ? t('level.above') : covered === false ? t('level.below') : t('level.unknown');
+    const color = covered === true || covered === false ? meta.color : undefined;
+    return (
+      <div className="flex items-end justify-between gap-3">
+        <div className="leading-tight">
+          <span className={`text-base font-bold ${color ? '' : 'text-muted-foreground'}`} style={color ? { color } : undefined}>
+            {label}
+          </span>
+        </div>
+        {alarm === true && (
+          <span className="mb-0.5 shrink-0 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-400">
+            {t('level.alarm')}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   // Sensoren & übrige Familien: bis zu drei numerische Messwerte aus dem State
   const rows: [string, string][] = [];
   for (const [k, v] of Object.entries(dev.state)) {

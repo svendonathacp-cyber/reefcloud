@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useI18n, useT } from '@/i18n/I18nContext';
-import type { AutolevelResponse, DeviceSnapshot } from '@/types/reef';
+import type { AutolevelReason, AutolevelResponse, CoveredState, DeviceSnapshot } from '@/types/reef';
 
 // Defensiv: ältere Server-Versionen kennen /api/autolevel noch nicht und liefern
 // über den SPA-Fallback HTML — daran sauber erkennen statt zu crashen
@@ -28,14 +28,25 @@ async function fetchJson(path: string, init?: RequestInit): Promise<Record<strin
 }
 
 const NONE = '__none__'; // Radix-Select erlaubt keine leeren Values
-const stateColor = (s: string) =>
-  s === 'ok' ? 'text-emerald-400' : s === 'alarmHigh' || s === 'alarmLow' ? 'text-red-400' : 'text-muted-foreground';
 
-function sensorStateKey(s: string): 'autolevel.state.ok' | 'autolevel.state.alarmHigh' | 'autolevel.state.alarmLow' | 'autolevel.state.unknown' {
-  if (s === 'ok') return 'autolevel.state.ok';
-  if (s === 'alarmHigh') return 'autolevel.state.alarmHigh';
-  if (s === 'alarmLow') return 'autolevel.state.alarmLow';
-  return 'autolevel.state.unknown';
+// covered → Anzeigetext (Wasser über/unter Sensor)
+function coveredKey(c: CoveredState): 'level.above' | 'level.below' | 'level.unknown' {
+  if (c === true) return 'level.above';
+  if (c === false) return 'level.below';
+  return 'level.unknown';
+}
+
+// Problemfarbe je Sensorposition: oben covered = zu voll (rot),
+// unten NICHT covered = zu leer (rot), sonst grün; unbekannt = gedimmt
+function coveredColor(c: CoveredState, role: 'high' | 'low'): string {
+  const problem = role === 'high' ? c === true : c === false;
+  if (problem) return 'text-red-400';
+  if (c === true || c === false) return 'text-emerald-400';
+  return 'text-muted-foreground';
+}
+
+function reasonKey(r: AutolevelReason): 'autolevel.reason.tooFull' | 'autolevel.reason.tooEmpty' | 'autolevel.reason.staleData' {
+  return r === 'tooFull' ? 'autolevel.reason.tooFull' : r === 'tooEmpty' ? 'autolevel.reason.tooEmpty' : 'autolevel.reason.staleData';
 }
 
 interface Props {
@@ -45,17 +56,26 @@ interface Props {
 
 // SVG-Veranschaulichung: Ablaufschacht mit Wasserpegel, zwei Sensorpunkten
 // (Farbe je Live-Zustand) und Pumpe mit aktuellem %-Wert + Richtungspfeil.
-function ShaftSketch({ highState, lowState, speed, arrowDir }: {
-  highState: string; lowState: string; speed: number | null;
+// covered-Logik: Punkt oben rot, wenn der obere Sensor bedeckt ist (zu voll);
+// Punkt unten rot, wenn der untere NICHT bedeckt ist (zu leer); Wasserfläche
+// zwischen den Sensoren, wenn unten covered && oben nicht covered.
+function ShaftSketch({ highCovered, lowCovered, speed, arrowDir }: {
+  highCovered: CoveredState; lowCovered: CoveredState; speed: number | null;
   arrowDir: 'up' | 'down' | null; // frischer Eingriff (< Cooldown alt)
 }) {
   const H = 160, W = 120; // Schacht-Geometrie
-  // Wasserpegel: Hoch-Alarm → hoch, Tief-Alarm → niedrig, sonst mittig
-  const levelFrac = highState === 'alarmHigh' ? 0.22 : lowState === 'alarmLow' ? 0.78 : 0.5;
+  // Wasserpegel: oben bedeckt → hoch (zu voll), unten trocken → niedrig (zu
+  // leer), Normalbereich (unten covered, oben nicht) → zwischen den Sensoren
+  const levelFrac = highCovered === true ? 0.22 : lowCovered === false ? 0.78 : 0.5;
   const waterY = 10 + levelFrac * (H - 20);
-  const dot = (state: string) =>
-    state === 'ok' ? '#34d399' : state === 'alarmHigh' || state === 'alarmLow' ? '#f87171' : '#64748b';
-  const blink = (state: string) => (state === 'alarmHigh' || state === 'alarmLow' ? 'autolevel-blink' : undefined);
+  const dot = (c: CoveredState, role: 'high' | 'low') => {
+    const problem = role === 'high' ? c === true : c === false;
+    if (problem) return '#f87171';
+    if (c === true || c === false) return '#34d399';
+    return '#64748b'; // unbekannt
+  };
+  const blink = (c: CoveredState, role: 'high' | 'low') =>
+    (role === 'high' ? c === true : c === false) ? 'autolevel-blink' : undefined;
   return (
     <div className="flex items-center justify-center gap-6">
       <style>{`@keyframes autolevel-blink { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
@@ -70,8 +90,8 @@ function ShaftSketch({ highState, lowState, speed, arrowDir }: {
         <line x1="17" x2={W - 17} stroke="#38bdf8" strokeWidth="2" strokeDasharray="4 3"
           style={{ y1: waterY, y2: waterY, transition: 'y1 1.2s ease, y2 1.2s ease' } as React.CSSProperties} />
         {/* Sensorpunkte: oben = Hoch-Sensor, unten = Tief-Sensor */}
-        <circle cx={W - 12} cy="28" r="6" fill={dot(highState)} className={blink(highState)} stroke="#0f172a" strokeWidth="1.5" />
-        <circle cx={W - 12} cy={H - 18} r="6" fill={dot(lowState)} className={blink(lowState)} stroke="#0f172a" strokeWidth="1.5" />
+        <circle cx={W - 12} cy="28" r="6" fill={dot(highCovered, 'high')} className={blink(highCovered, 'high')} stroke="#0f172a" strokeWidth="1.5" />
+        <circle cx={W - 12} cy={H - 18} r="6" fill={dot(lowCovered, 'low')} className={blink(lowCovered, 'low')} stroke="#0f172a" strokeWidth="1.5" />
       </svg>
       {/* Pumpe mit aktuellem %-Wert und Richtungspfeil */}
       <div className="flex flex-col items-center gap-1">
@@ -198,15 +218,18 @@ export default function AutolevelSection({ dev, devices }: Props) {
   const st = data?.status;
   const hist = data?.history ?? [];
   const last = hist[0];
-  // Pfeil kurz nach einem Eingriff zeigen (Eintrag jünger als Cooldown)
+  // Pfeil kurz nach einem Eingriff zeigen (Eintrag jünger als Cooldown;
+  // staleData-Einträge haben keine Speeds → kein Pfeil)
   const arrowDir: 'up' | 'down' | null =
-    last && st && Date.now() - last.ts < st.cooldownS * 1000
+    last && st && typeof last.newSpeed === 'number' && typeof last.oldSpeed === 'number'
+    && Date.now() - last.ts < st.cooldownS * 1000
       ? last.newSpeed > last.oldSpeed ? 'up' : last.newSpeed < last.oldSpeed ? 'down' : null
       : null;
   const bothSensorsSet = !!(cfg?.highSerial && cfg?.lowSerial);
 
   const sensorSelect = (
-    label: string, value: string, field: 'highSerial' | 'lowSerial', state: string,
+    label: string, value: string, field: 'highSerial' | 'lowSerial',
+    covered: CoveredState, dataAgeS: number | null | undefined,
   ) => (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
@@ -228,8 +251,15 @@ export default function AutolevelSection({ dev, devices }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <span className={`shrink-0 text-xs font-medium ${stateColor(state)}`}>{t(sensorStateKey(state))}</span>
+        <span className={`shrink-0 text-xs font-medium ${coveredColor(covered, field === 'highSerial' ? 'high' : 'low')}`}>
+          {t(coveredKey(covered))}
+        </span>
       </div>
+      {value && (
+        <p className="text-[11px] text-muted-foreground">
+          {typeof dataAgeS === 'number' ? t('autolevel.dataAge', { s: dataAgeS }) : t('autolevel.dataAge.never')}
+        </p>
+      )}
     </div>
   );
 
@@ -265,14 +295,14 @@ export default function AutolevelSection({ dev, devices }: Props) {
       )}
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {sensorSelect(t('autolevel.sensorHigh'), cfg?.highSerial ?? '', 'highSerial', st?.highState ?? 'unknown')}
-        {sensorSelect(t('autolevel.sensorLow'), cfg?.lowSerial ?? '', 'lowSerial', st?.lowState ?? 'unknown')}
+        {sensorSelect(t('autolevel.sensorHigh'), cfg?.highSerial ?? '', 'highSerial', st?.highCovered ?? 'unknown', st?.highDataAgeS)}
+        {sensorSelect(t('autolevel.sensorLow'), cfg?.lowSerial ?? '', 'lowSerial', st?.lowCovered ?? 'unknown', st?.lowDataAgeS)}
       </div>
 
       <div className="mt-4 rounded-lg border border-border/60 bg-background/40 p-3">
         <ShaftSketch
-          highState={st?.highState ?? 'unknown'}
-          lowState={st?.lowState ?? 'unknown'}
+          highCovered={st?.highCovered ?? 'unknown'}
+          lowCovered={st?.lowCovered ?? 'unknown'}
           speed={st?.currentSpeed ?? null}
           arrowDir={arrowDir}
         />
@@ -287,7 +317,10 @@ export default function AutolevelSection({ dev, devices }: Props) {
             <span className="text-muted-foreground">{t('autolevel.lastAction')}</span>
             <span className="font-mono text-xs">
               {last
-                ? `${timeFmt.format(new Date(last.ts))} · ${t(last.reason === 'alarmHigh' ? 'autolevel.reason.alarmHigh' : 'autolevel.reason.alarmLow')} · ${t('autolevel.lastAction.delta', { old: last.oldSpeed, new: last.newSpeed })}`
+                ? `${timeFmt.format(new Date(last.ts))} · ${t(reasonKey(last.reason))}` +
+                  (typeof last.oldSpeed === 'number' && typeof last.newSpeed === 'number'
+                    ? ` · ${t('autolevel.lastAction.delta', { old: last.oldSpeed, new: last.newSpeed })}`
+                    : '')
                 : t('autolevel.lastAction.none')}
             </span>
           </div>
@@ -341,12 +374,14 @@ export default function AutolevelSection({ dev, devices }: Props) {
         ) : (
           <ul className="mt-1.5 space-y-1">
             {hist.slice(0, 10).map((h, i) => (
-              <li key={`${h.ts}-${i}`} className="flex items-center justify-between rounded-md bg-background/40 px-2 py-1 font-mono text-xs">
-                <span className="text-muted-foreground">{timeFmt.format(new Date(h.ts))}</span>
-                <span className={h.reason === 'alarmHigh' ? 'text-red-400' : 'text-amber-300'}>
-                  {t(h.reason === 'alarmHigh' ? 'autolevel.reason.alarmHigh' : 'autolevel.reason.alarmLow')}
+              <li key={`${h.ts}-${i}`} className="flex items-center justify-between gap-2 rounded-md bg-background/40 px-2 py-1 font-mono text-xs">
+                <span className="shrink-0 text-muted-foreground">{timeFmt.format(new Date(h.ts))}</span>
+                <span className={`truncate ${h.reason === 'tooFull' ? 'text-red-400' : h.reason === 'tooEmpty' ? 'text-amber-300' : 'text-muted-foreground'}`}>
+                  {t(reasonKey(h.reason))}
                 </span>
-                <span>{h.oldSpeed} % → {h.newSpeed} %</span>
+                <span className="shrink-0">
+                  {typeof h.oldSpeed === 'number' && typeof h.newSpeed === 'number' ? `${h.oldSpeed} % → ${h.newSpeed} %` : '—'}
+                </span>
               </li>
             ))}
           </ul>
