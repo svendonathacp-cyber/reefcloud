@@ -9,6 +9,7 @@
     "test": "node tanklist-test.mjs && node tanklistdetails-test.mjs"
   },
   "dependencies": {
+    "selfsigned": "^2.4.1",
     "ws": "^8.18.0"
   }
 }

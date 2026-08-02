@@ -7,12 +7,14 @@
 import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 import { parseTankListPayload, generateTankListPayload, newDeviceRecord } from './tanklist-lib.mjs';
 import { startTunnel } from './reef-tunnel.mjs';
+import { ensureCertificate } from './reef-cert.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -131,8 +133,70 @@ function loadEnv() {
   return env;
 }
 const ENV = loadEnv();
-const TUNNEL_URL = ENV.TUNNEL_URL || 'wss://donath-home.de/api/reef/tunnel';
-const TUNNEL_TOKEN = ENV.TUNNEL_TOKEN || null;
+let TUNNEL_URL = ENV.TUNNEL_URL || 'wss://donath-home.de/api/reef/tunnel';
+let TUNNEL_TOKEN = ENV.TUNNEL_TOKEN || null;
+
+// Konfiguration persistieren: Pi → /boot/reef-cloud.env (Konfigurationsweg
+// laut Pi-Briefing, kommt nicht ins Image), sonst .env neben dem Server.
+function writeEnvConfig({ tunnelUrl, tunnelToken }) {
+  const lines = [
+    '# reef-cloud Konfiguration (Setup-Wizard, ' + new Date().toISOString() + ')',
+    `TUNNEL_URL=${tunnelUrl}`,
+    `TUNNEL_TOKEN=${tunnelToken}`,
+    '',
+  ];
+  const bootPath = '/boot/reef-cloud.env';
+  try {
+    fs.accessSync('/boot', fs.constants.W_OK);
+    fs.writeFileSync(bootPath, lines.join('\n'));
+    return bootPath;
+  } catch { /* kein Pi oder /boot nicht beschreibbar */ }
+  const localPath = path.join(__dirname, '.env');
+  fs.writeFileSync(localPath, lines.join('\n'));
+  return localPath;
+}
+
+// Tunnel-Verbindungstest fürs Setup: öffnet kurz eine eigene WS-Verbindung
+// mit Bearer-Token. ok=true, sobald der Server den Upgrade akzeptiert.
+function testTunnelConnection(url, token) {
+  return new Promise((resolve) => {
+    let ws;
+    const timer = setTimeout(() => {
+      try { ws?.terminate(); } catch {}
+      resolve({ ok: false, error: 'Zeitüberschreitung (8 s) — URL erreichbar?' });
+    }, 8000);
+    try {
+      ws = new WebSocket(url, { headers: { authorization: `Bearer ${token}` } });
+    } catch (e) {
+      clearTimeout(timer);
+      return resolve({ ok: false, error: `Ungültige URL: ${e.message}` });
+    }
+    ws.on('open', () => {
+      clearTimeout(timer);
+      try { ws.close(); } catch {}
+      resolve({ ok: true });
+    });
+    ws.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: e.message });
+    });
+    ws.on('unexpected-response', (req, res) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `Server antwortet HTTP ${res.statusCode} — Token oder Route falsch?` });
+    });
+  });
+}
+
+// LAN-IPv4-Adressen (für den DNS-Rewrite-Hinweis im Setup)
+function lanIps() {
+  const out = [];
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.family === 'IPv4' && !a.internal) out.push({ name, address: a.address });
+    }
+  }
+  return out;
+}
 
 // Family-Mapping (Serial-Präfix → deviceSnapshot.family, Briefing §3.3)
 const FAMILY = {
@@ -548,7 +612,14 @@ async function handleTunnelRequest(method, params) {
   throw new Error(`unknown method ${method}`);
 }
 
-if (TUNNEL_TOKEN) {
+// Tunnel (neu) starten — beim Serverstart und nach dem Setup-Wizard ohne Restart.
+function launchTunnel(reason = 'Start') {
+  try { tunnel?.stop?.(); } catch {}
+  tunnel = null;
+  if (!TUNNEL_TOKEN) {
+    log('Tunnel deaktiviert (kein TUNNEL_TOKEN in .env / /boot/reef-cloud.env)');
+    return;
+  }
   tunnel = startTunnel({
     url: TUNNEL_URL,
     token: TUNNEL_TOKEN,
@@ -556,10 +627,9 @@ if (TUNNEL_TOKEN) {
     getSnapshots: () => [...deviceMeta.keys()].map(snapshot),
     handleRequest: handleTunnelRequest,
   });
-  log(`Tunnel aktiviert → ${TUNNEL_URL}`);
-} else {
-  log('Tunnel deaktiviert (kein TUNNEL_TOKEN in .env / /boot/reef-cloud.env)');
+  log(`Tunnel aktiviert (${reason}) → ${TUNNEL_URL}`);
 }
+launchTunnel();
 
 // ---------- Verbindungs-Registry ----------
 const devices = new Map(); // serial → ws
@@ -741,8 +811,10 @@ function send(ws, cls, method, payload, serial = '0000000000000000') {
 }
 
 // ---------- Server-Aufbau ----------
-const cert = fs.readFileSync(path.join(__dirname, 'reef-cloud-cert.pem'));
-const key = fs.readFileSync(path.join(__dirname, 'reef-cloud-key.pem'));
+// Zertifikat sicherstellen: fehlt es (z. B. frisches Pi-Image), wird es hier
+// automatisch selbst-signiert erzeugt (CN/SAN api.reeffactory.com, CA, 10 Jahre).
+const { certPem: cert, keyPem: key, info: certInfo } = await ensureCertificate(__dirname, log);
+log(`TLS-Zertifikat bereit: CN=${certInfo.cn}, Fingerprint ${certInfo.fingerprint256 || '?'}${certInfo.generated ? ' (neu erzeugt)' : ''}`);
 
 function createWssServer(port, role, frameHandler, useTls = true) {
   const server = useTls ? https.createServer({ cert, key }) : http.createServer();
@@ -965,8 +1037,56 @@ const webServer = http.createServer(async (req, res) => {
         return webSendJson(res, { ok: true, uploaded, version });
       }
     }
-    // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html)
-    const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname).replace(/^\/+/, '');
+    if (u.pathname === '/api/setup/status' && req.method === 'GET') {
+      // Setup-Wizard-Status. Token wird absichtlich nie zurückgegeben.
+      return webSendJson(res, {
+        needsSetup: !TUNNEL_TOKEN,
+        hasToken: !!TUNNEL_TOKEN,
+        tunnelUrl: TUNNEL_URL,
+        tunnelConnected: !!(tunnel && tunnel.isConnected()),
+        lanIps: lanIps(),
+        cert: { cn: certInfo.cn, fingerprint256: certInfo.fingerprint256, notAfter: certInfo.notAfter },
+      });
+    }
+    if (u.pathname === '/api/setup/test' && req.method === 'POST') {
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const url = String(body.tunnelUrl || TUNNEL_URL);
+      const token = String(body.tunnelToken || '');
+      if (!token) throw new Error('tunnelToken fehlt');
+      return webSendJson(res, await testTunnelConnection(url, token));
+    }
+    if (u.pathname === '/api/setup' && req.method === 'POST') {
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const tunnelUrl = String(body.tunnelUrl || '').trim() || TUNNEL_URL;
+      let tunnelToken = String(body.tunnelToken || '').trim();
+      if (!tunnelToken && TUNNEL_TOKEN) tunnelToken = TUNNEL_TOKEN; // leer = bestehenden behalten
+      if (!/^[0-9a-f]{32,128}$/i.test(tunnelToken)) throw new Error('tunnelToken ungültig (32–128 Hex-Zeichen erwartet)');
+      if (!/^wss?:\/\//.test(tunnelUrl)) throw new Error('tunnelUrl muss mit ws:// oder wss:// beginnen');
+      const envFile = writeEnvConfig({ tunnelUrl, tunnelToken });
+      TUNNEL_URL = tunnelUrl;
+      TUNNEL_TOKEN = tunnelToken;
+      launchTunnel('Setup-Wizard');
+      log(`  [setup] Konfiguration gespeichert → ${envFile}; Tunnel neu gestartet → ${tunnelUrl}`);
+      return webSendJson(res, { ok: true, envFile, tunnelConnected: !!(tunnel && tunnel.isConnected()) });
+    }
+    if (u.pathname === '/setup') {
+      const fp = path.join(__dirname, 'setup.html');
+      try {
+        const data = fs.readFileSync(fp);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(data);
+      } catch { res.writeHead(404); return res.end('setup.html fehlt'); }
+    }
+    // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html).
+    // Erststart ohne Token: Setup-Wizard statt Dashboard zeigen.
+    const rel = u.pathname === '/' ? (!TUNNEL_TOKEN ? '__setup__' : 'index.html') : decodeURIComponent(u.pathname).replace(/^\/+/, '');
+    if (rel === '__setup__') {
+      try {
+        const data = fs.readFileSync(path.join(__dirname, 'setup.html'));
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(data);
+      } catch { /* fällt auf index.html zurück */ }
+    }
     const fp = path.normalize(path.join(WEBUI_DIR, rel));
     if (!fp.startsWith(WEBUI_DIR)) { res.writeHead(403); res.end(); return; }
     fs.readFile(fp, (err, data) => {

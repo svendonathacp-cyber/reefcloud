@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>reef-cloud — Ersteinrichtung</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #0b1220; color: #dbe4f0; padding: 24px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .card {
+    width: 100%; max-width: 560px; background: #121c30; border: 1px solid #22314e;
+    border-radius: 14px; padding: 28px 28px 24px;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: #8fa3c0; font-size: 14px; margin-bottom: 20px; }
+  .step { border-top: 1px solid #22314e; padding: 16px 0; }
+  .step h2 { margin: 0 0 8px; font-size: 15px; color: #9fc1ff; }
+  .step p { margin: 6px 0; font-size: 13px; color: #aebdd4; line-height: 1.5; }
+  code {
+    background: #0b1220; border: 1px solid #22314e; border-radius: 6px;
+    padding: 1px 6px; font-size: 12px; color: #ffd479; word-break: break-all;
+  }
+  label { display: block; font-size: 13px; color: #8fa3c0; margin: 12px 0 4px; }
+  input {
+    width: 100%; background: #0b1220; border: 1px solid #2c3f61; border-radius: 8px;
+    color: #dbe4f0; padding: 10px 12px; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: #4d7bd6; }
+  .row { display: flex; gap: 10px; margin-top: 16px; }
+  button {
+    flex: 1; border: 0; border-radius: 8px; padding: 11px 14px; font-size: 14px;
+    font-weight: 600; cursor: pointer;
+  }
+  #testBtn { background: #22314e; color: #cfe0ff; }
+  #testBtn:hover { background: #2c3f61; }
+  #saveBtn { background: #2f7d4f; color: #eafff2; }
+  #saveBtn:hover { background: #38935e; }
+  button:disabled { opacity: .5; cursor: default; }
+  .msg { margin-top: 14px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; }
+  .msg.ok { display: block; background: #12351f; border: 1px solid #2f7d4f; color: #9fe8bd; }
+  .msg.err { display: block; background: #3a1620; border: 1px solid #a33; color: #ffb3b3; }
+  .ok-dot { color: #52d273; font-weight: 700; }
+  ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: #aebdd4; }
+  a { color: #9fc1ff; }
+  .done { text-align: center; display: none; }
+  .done .big { font-size: 40px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🐠 reef-cloud — Ersteinrichtung</h1>
+  <div class="sub">Lokale Cloud für deine Reef-Factory-Geräte</div>
+
+  <div class="step">
+    <h2>1 · TLS-Zertifikat <span class="ok-dot">✓</span></h2>
+    <p id="certLine">Wird geprüft …</p>
+  </div>
+
+  <div class="step">
+    <h2>2 · DNS auf diesen Server zeigen lassen</h2>
+    <p>Damit die Geräte hier statt in der echten Cloud landen, braucht es einen
+       DNS-Rewrite für <code>api.reeffactory.com</code> auf die IP dieses Servers:</p>
+    <ul id="ipList"><li>Ermittle IPs …</li></ul>
+    <p>Bei AdGuard Home: <em>Filter → DNS-Umschreibungen → hinzufügen</em> —
+       Domain <code>api.reeffactory.com</code>, Ziel-IP von oben.
+       Ports <code>443</code>, <code>444</code>, <code>442</code> und <code>80</code> müssen eingehend offen sein.</p>
+  </div>
+
+  <div class="step">
+    <h2>3 · Tunnel zum WebOS-Server (optional, aber empfohlen)</h2>
+    <p>Verbindet diese Instanz mit der Aquarium-App (fernsteuerbar über das Internet).</p>
+    <label for="url">Tunnel-URL</label>
+    <input id="url" spellcheck="false">
+    <label for="token">Tunnel-Token</label>
+    <input id="token" type="password" spellcheck="false" placeholder="64-stelliger Hex-Token">
+    <div class="row">
+      <button id="testBtn">Verbindung testen</button>
+      <button id="saveBtn">Speichern &amp; starten</button>
+    </div>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div class="step done" id="done">
+    <div class="big">🎉</div>
+    <p>Einrichtung abgeschlossen und Tunnel gestartet.</p>
+    <p><a href="/">→ Weiter zum Dashboard</a> (Seite ggf. neu laden)</p>
+  </div>
+
+  <div class="step" style="border-bottom:0; padding-bottom:0">
+    <p style="color:#66789a">Überspringen? Ohne Token läuft reef-cloud rein lokal —
+       <a href="/">direkt zum Dashboard</a>. Der Wizard erscheint beim nächsten Start erneut.</p>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const msg = (kind, text) => { const m = $('msg'); m.className = 'msg ' + kind; m.textContent = text; };
+
+async function loadStatus() {
+  try {
+    const s = await (await fetch('/api/setup/status')).json();
+    $('certLine').innerHTML = s.cert && s.cert.cn
+      ? `Selbst-signiertes Zertifikat aktiv: <code>${s.cert.cn}</code>` +
+        (s.cert.notAfter ? ` (gültig bis ${new Date(s.cert.notAfter).toLocaleDateString('de-DE')})` : '')
+      : 'Zertifikat wird beim ersten Start automatisch erzeugt.';
+    $('ipList').innerHTML = (s.lanIps && s.lanIps.length)
+      ? s.lanIps.map((i) => `<li><code>${i.address}</code> <span style="color:#66789a">(${i.name})</span></li>`).join('')
+      : '<li>Keine LAN-IP gefunden — Netzwerk prüfen.</li>';
+    $('url').value = s.tunnelUrl || 'wss://donath-home.de/api/reef/tunnel';
+    if (s.hasToken) $('token').placeholder = 'Token gespeichert — leer lassen zum Behalten';
+  } catch (e) {
+    $('certLine').textContent = 'Status konnte nicht geladen werden: ' + e.message;
+  }
+}
+
+$('testBtn').onclick = async () => {
+  msg('ok', 'Teste Verbindung …');
+  $('testBtn').disabled = true;
+  try {
+    const r = await (await fetch('/api/setup/test', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tunnelUrl: $('url').value.trim(), tunnelToken: $('token').value.trim() }),
+    })).json();
+    if (r.ok) msg('ok', '✅ Verbindung erfolgreich — Server hat den Token akzeptiert.');
+    else msg('err', '❌ ' + (r.error || 'Verbindung fehlgeschlagen'));
+  } catch (e) { msg('err', '❌ ' + e.message); }
+  $('testBtn').disabled = false;
+};
+
+$('saveBtn').onclick = async () => {
+  $('saveBtn').disabled = true;
+  msg('ok', 'Speichere und starte Tunnel …');
+  try {
+    const r = await (await fetch('/api/setup', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tunnelUrl: $('url').value.trim(), tunnelToken: $('token').value.trim() }),
+    })).json();
+    if (!r.ok) throw new Error(r.error || 'Speichern fehlgeschlagen');
+    msg('ok', `✅ Gespeichert (${r.envFile}). Tunnel ${r.tunnelConnected ? 'verbunden' : 'startet — verbindet gleich automatisch'}.`);
+    $('done').style.display = 'block';
+    $('done').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { msg('err', '❌ ' + e.message); }
+  $('saveBtn').disabled = false;
+};
+
+loadStatus();
+</script>
+</body>
+</html>

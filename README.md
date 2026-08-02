@@ -79,13 +79,19 @@ Möglichkeit (z. B. AdGuard Home, Pi-hole, Router).
    machen → Login und Reports landen als Dateien in `dumps/`.
    ⚠️ Diese Dateien enthalten Account-Token und E-Mail — **niemals
    committen oder weitergeben** (steht deshalb in der .gitignore).
-2. **Zertifikat erzeugen:** selbstsigniertes Zertifikat für
-   `api.reeffactory.com` (`reef-cloud-cert.pem` / `reef-cloud-key.pem`);
-   die öffentliche `.crt` auf dem Handy als CA installieren (die App
-   validiert, die Geräte-Firmware nicht).
-3. **DNS-Rewrite:** `api.reeffactory.com` → IP dieses Hosts.
-4. **Starten:** `npm install && node reef-cloud-v2.mjs`
-5. **Optional — Tunnel zu eigenem Server:** `.env` mit
+2. **Starten:** `npm install && node reef-cloud-v2.mjs`
+   - Fehlt das TLS-Zertifikat, wird es beim Start **automatisch
+     selbst-signiert erzeugt** (`reef-cloud-cert.pem` / `reef-cloud-key.pem`,
+     CN/SAN `api.reeffactory.com`, CA, 10 Jahre). Die öffentliche `.crt`
+     auf dem Handy als CA installieren (die App validiert, die
+     Geräte-Firmware nicht).
+3. **Ersteinrichtung:** `http://<host>:8080` öffnen — solange kein
+   Tunnel-Token konfiguriert ist, erscheint automatisch der
+   **Setup-Wizard** (LAN-IPs für den DNS-Rewrite, Tunnel-URL + Token mit
+   Verbindungstest). Der Wizard schreibt `/boot/reef-cloud.env` (Pi) bzw.
+   `.env` (sonst) und startet den Tunnel ohne Neustart.
+4. **DNS-Rewrite:** `api.reeffactory.com` → IP dieses Hosts.
+5. **Optional — Tunnel manuell konfigurieren:** `.env` mit
    `TUNNEL_URL=wss://<eigener-host>/...` und `TUNNEL_TOKEN=<secret>`
    anlegen (Datei bleibt lokal, siehe .gitignore). Protokoll siehe
    Kommentarkopf in `reef-tunnel.mjs`.
@@ -94,7 +100,9 @@ Möglichkeit (z. B. AdGuard Home, Pi-hole, Router).
 
 | Datei | Zweck |
 |-------|-------|
-| `reef-cloud-v2.mjs` | Produktiver Server (Fake-Cloud, Routing, State, Tunnel) |
+| `reef-cloud-v2.mjs` | Produktiver Server (Fake-Cloud, Routing, State, Tunnel, Setup-API) |
+| `reef-cert.mjs`      | TLS-Zertifikat beim Start prüfen bzw. automatisch erzeugen |
+| `setup.html`         | Setup-Wizard für den Erststart (Port 8080, ohne Build) |
 | `reef-tunnel.mjs`    | Ausgehender wss-Tunnel (Reconnect, Re-Announce, Kommandos) |
 | `tanklist-lib.mjs`   | Parser/Generator für das tankList-Binärformat |
 | `reef-cloud.mjs`     | Phase-1-Logger (Mitschnitte/`dumps/` erzeugen) |
