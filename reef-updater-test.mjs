@@ -56,7 +56,7 @@ function makeUpdater(responses, opts = {}) {
     'git rev-list --count HEAD..origin/main': { stdout: '2\n' },
     'git rev-parse --short HEAD': { stdout: 'abc1234\n' },
     'git log -1 --format=%s origin/main': { stdout: 'Neues Feature\n' },
-    'git pull --ff-only': { stdout: 'Updating abc1234..def5678\n' },
+    'git pull --ff-only origin main': { stdout: 'Updating abc1234..def5678\n' },
     'npm install --omit=dev --no-audit --no-fund': { stdout: 'up to date\n' },
     ...responses,
   });
@@ -123,12 +123,12 @@ function makeUpdater(responses, opts = {}) {
   let msg = '';
   try { await updater.install(); } catch (e) { msg = e.message; }
   check('install behind=0: Fehler „kein Update"', /behind = 0/.test(msg), true);
-  check('install behind=0: kein git pull aufgerufen', calls.includes('git pull --ff-only'), false);
+  check('install behind=0: kein git pull aufgerufen', calls.includes('git pull --ff-only origin main'), false);
 }
 
 // --- 7) Install-Guard: paralleler install → „läuft bereits" ---
 {
-  const { updater } = makeUpdater({ 'git pull --ff-only': { pending: true } });
+  const { updater } = makeUpdater({ 'git pull --ff-only origin main': { pending: true } });
   await updater.check();
   const first = updater.install(); // hängt im gemockten pull
   await new Promise((r) => setTimeout(r, 0)); // eine Runde warten, bis updating gesetzt ist
@@ -145,7 +145,7 @@ function makeUpdater(responses, opts = {}) {
   await updater.check();
   const res = await updater.install();
   check('install ok: Antwort', res, { ok: true, restarting: true, autoRestart: true });
-  const pullIdx = calls.indexOf('git pull --ff-only');
+  const pullIdx = calls.indexOf('git pull --ff-only origin main');
   const npmIdx = calls.indexOf('npm install --omit=dev --no-audit --no-fund');
   check('install ok: pull vor npm', pullIdx >= 0 && npmIdx > pullIdx, true);
   check('install ok: behind danach 0', updater.status().behind, 0);
@@ -154,7 +154,7 @@ function makeUpdater(responses, opts = {}) {
 // --- 9) pull schlägt fehl (lokaler Dreck) → Fehler durchgereicht, npm NICHT ---
 {
   const { updater, calls } = makeUpdater({
-    'git pull --ff-only': { error: new Error('exit 1'), stderr: 'error: Your local changes would be overwritten by merge.' },
+    'git pull --ff-only origin main': { error: new Error('exit 1'), stderr: 'error: Your local changes would be overwritten by merge.' },
   });
   await updater.check();
   let msg = '';
@@ -178,6 +178,20 @@ function makeUpdater(responses, opts = {}) {
   });
   const st = await updater.check();
   check('Timeout: Timeout-Meldung im error', /Timeout nach 30 s/.test(st.error), true);
+}
+
+// --- 12) Race check↔install: check() während updating → sofort Status, kein fetch ---
+{
+  const { updater, calls } = makeUpdater({ 'git pull --ff-only origin main': { pending: true } });
+  await updater.check();
+  const fetchesBefore = calls.filter((c) => c === 'git fetch --quiet origin').length;
+  const first = updater.install(); // hängt im gemockten pull → updating = true
+  await new Promise((r) => setTimeout(r, 0));
+  const st = await updater.check(); // 24-h-Timer-Simulation: darf den Pull nicht stören
+  check('check während updating: gibt updating-Status zurück', st.updating, true);
+  check('check während updating: kein weiterer fetch',
+    calls.filter((c) => c === 'git fetch --quiet origin').length, fetchesBefore);
+  void first.catch(() => {}); // hängender Mock — nie auflösen, nur Fehler schlucken
 }
 
 console.log(failures ? `\n${failures} Test(s) FEHLGESCHLAGEN` : '\nAlle Updater-Tests bestanden');

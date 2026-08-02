@@ -119,6 +119,8 @@ export function createUpdater({
   // Update-Status gegen origin/main ermitteln. Wirft NIEMALS — Fehler landen
   // im Status (error) und im Log. Gibt immer den aktuellen Status zurück.
   async function check() {
+    // Der 24-h-Timer darf einen laufenden Pull nicht stören (Race check↔install)
+    if (updating) return status();
     if (checking) return status(); // kein überlappender Lauf (manuell + Timer)
     checking = true;
     try {
@@ -162,7 +164,9 @@ export function createUpdater({
     updating = true;
     try {
       log(`  [updater] installiere Update (${behind} Commit(s) von origin/main)…`);
-      await run('git', ['pull', '--ff-only'], cfg.pullTimeoutMs);
+      // Explizit origin/main: exakt das ziehen, was der Check misst —
+      // unabhängig vom konfigurierten Upstream des lokalen Branches.
+      await run('git', ['pull', '--ff-only', 'origin', 'main'], cfg.pullTimeoutMs);
       log('  [updater] git pull ok — npm install läuft…');
       await run(npm.cmd, npm.args, cfg.npmTimeoutMs);
       log('  [updater] npm install ok — Neustart folgt (systemd: automatisch)');
