@@ -1283,6 +1283,35 @@ const webServer = http.createServer(async (req, res) => {
         return res.end(data);
       } catch { res.writeHead(404); return res.end('setup.html fehlt'); }
     }
+    // Anleitungs-Seiten (guides/): Zertifikats-Installation iOS/Android,
+    // DNS-Rewrite-Anleitung mit Live-Test. Statisch, kein Build.
+    if (u.pathname === '/guides/reef-cloud-cert.crt') {
+      // NUR das Zertifikat — niemals den Schlüssel ausliefern.
+      try {
+        const pem = fs.readFileSync(path.join(__dirname, 'reef-cloud-cert.pem'));
+        res.writeHead(200, {
+          'content-type': 'application/x-pem-file',
+          'content-disposition': 'attachment; filename="reef-cloud-cert.crt"',
+          'cache-control': 'no-cache',
+        });
+        return res.end(pem);
+      } catch { res.writeHead(404); return res.end('Zertifikat noch nicht erzeugt'); }
+    }
+    if (u.pathname === '/guides' || u.pathname.startsWith('/guides/')) {
+      const GUIDES_DIR = path.join(__dirname, 'guides');
+      const grel = (u.pathname === '/guides' || u.pathname === '/guides/') ? 'index.html'
+        : decodeURIComponent(u.pathname.slice('/guides/'.length)).replace(/^\/+/, '') || 'index.html';
+      const gfp = path.normalize(path.join(GUIDES_DIR, grel));
+      if (gfp !== GUIDES_DIR && !gfp.startsWith(GUIDES_DIR + path.sep)) { res.writeHead(403); return res.end(); }
+      try {
+        const data = fs.readFileSync(gfp);
+        res.writeHead(200, {
+          'content-type': WEBUI_MIME[path.extname(gfp).toLowerCase()] || 'application/octet-stream',
+          'cache-control': 'no-cache',
+        });
+        return res.end(data);
+      } catch { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('Anleitung nicht gefunden'); }
+    }
     // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html).
     // Erststart ohne Token: Setup-Wizard statt Dashboard zeigen.
     const rel = u.pathname === '/' ? (!TUNNEL_TOKEN ? '__setup__' : 'index.html') : decodeURIComponent(u.pathname).replace(/^\/+/, '');
