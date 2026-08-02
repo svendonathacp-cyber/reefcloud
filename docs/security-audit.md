@@ -1,6 +1,6 @@
 # Security-Audit: reefcloud (lokale Reef-Factory-Ersatz-Cloud)
 
-**Datum:** 2025-08 (aktualisiert nach Review-Nachbesserungen) · **Branch:** task/security · **Kontext:** ausschließlicher LAN-Betrieb beim Hausbesitzer, keine Internet-Exposition geplant. Der Tunnel nach donath-home.de ist die einzige bewusste Ausgehend-Verbindung.
+**Datum:** 2025-08 (aktualisiert nach Review-Nachbesserungen) · **Branch:** task/security · **Kontext:** ausschließlicher LAN-Betrieb beim Hausbesitzer, keine Internet-Exposition geplant. Der Tunnel zum konfigurierten externen Server ist die einzige bewusste Ausgehend-Verbindung.
 
 ## Executive Summary
 

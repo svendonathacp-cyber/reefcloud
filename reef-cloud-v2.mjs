@@ -117,7 +117,7 @@ function deviceName(serial) {
 const tankName = () => unescapeHtml(tankModel?.tanks[0]?.name)?.trim() || null;
 
 // ====================================================================
-// Tunnel zum WebOS-Server (donath-home.de) — Geräte-Snapshots + Kommandos
+// Tunnel zu einem externen Server (z. B. WebOS) — Geräte-Snapshots + Kommandos
 // ====================================================================
 
 // .env laden (lokal: reef-cloud/.env; Pi-Image: /boot/reef-cloud.env als Fallback)

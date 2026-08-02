@@ -1,4 +1,4 @@
-// reef-tunnel.mjs — Ausgehender WebSocket-Tunnel zum WebOS-Server (donath-home.de)
+// reef-tunnel.mjs — Ausgehender WebSocket-Tunnel zu einem externen Server (z. B. WebOS)
 // Protokoll (JSON über wss), identisch zum bisherigen reef-bridge-Tunnel (NAS):
 //   Server→Pi:  {"id":"<uuid>","type":"request","method":"…","params":{…}}
 //   Pi→Server:  {"id":"<uuid>","type":"response","ok":true,"data":…} | {"ok":false,"error":"…"}
