@@ -10,11 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
-  BasepumpBody, deviceDisplayName, FlareBody, FAMILY_META, GenericBody, RollerBody, WaveBody, WAVE_MODE_KEYS,
+  BasepumpBody, deviceDisplayName, FlareBody, FAMILY_META, GenericBody, LK_STATUS_KEYS, RollerBody, WaveBody, WAVE_MODE_KEYS,
 } from './DeviceCard';
 import { StatusDot, StatusLabel, statusOf } from './DeviceTile';
+import { Switch } from '@/components/ui/switch';
 import AutolevelSection from './AutolevelSection';
 import FlareProgramEditor from './FlareProgramEditor';
+import FlareManualSection, { FlareModeSwitch } from './FlareManualSection';
+import LevelKeeperBody from './LevelKeeperBody';
 import { useT } from '@/i18n/I18nContext';
 import type { CommandFn, DeviceSnapshot, SetDevicePropsFn, SetNicknameFn } from '@/types/reef';
 
@@ -90,6 +93,15 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
       const covered = dev.state.covered;
       const label = covered === true ? t('level.above') : covered === false ? t('level.below') : t('level.unknown');
       return <BigStat label={t('level.statusLabel')} value={label} accent={covered === true || covered === false} />;
+    }
+    case 'level': {
+      const statusKey = LK_STATUS_KEYS[String(dev.state.status ?? '')];
+      return (
+        <>
+          <BigStat label={t('detail.status')} value={statusKey ? t(statusKey) : t('lk.status.unknown')} accent={false} />
+          <BigStat label={t('lk.today')} value={num(dev.state.todayMl)} unit="ml" />
+        </>
+      );
     }
     case 'salinity': {
       const fmt = (v: unknown, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—');
@@ -190,9 +202,10 @@ interface Props {
 }
 
 // Level-Sensor-Detailkarte: großer Wasserstand (covered), darunter klein der
-// Roh-Code + Alarm-Flag, und der Toggle für die geräteseitige Alarm-Richtung
-// (POST /api/devices/props — wirkt sofort, Server leitet covered neu ab).
-function LevelSensorBody({ dev, setDeviceProps }: { dev: DeviceSnapshot; setDeviceProps: SetDevicePropsFn }) {
+// Roh-Code + Alarm-Flag, der Toggle für die geräteseitige Alarm-Richtung
+// (POST /api/devices/props — wirkt sofort, Server leitet covered neu ab) und
+// der Tonalarm-Schalter (Zustand aus soundOn, Befehl lsSound/on|off).
+function LevelSensorBody({ dev, setDeviceProps, sendCommand }: { dev: DeviceSnapshot; setDeviceProps: SetDevicePropsFn; sendCommand: CommandFn }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const covered = dev.state.covered;
@@ -200,6 +213,7 @@ function LevelSensorBody({ dev, setDeviceProps }: { dev: DeviceSnapshot; setDevi
   const code = num(dev.state.code, -1);
   const alarmWhen = dev.alarmWhen ?? 'above';
   const label = covered === true ? t('level.above') : covered === false ? t('level.below') : t('level.unknown');
+  const soundOn = num(dev.state.soundOn, -1);
 
   const setAlarmWhen = async (v: 'above' | 'below') => {
     if (v === alarmWhen || busy) return;
@@ -207,6 +221,18 @@ function LevelSensorBody({ dev, setDeviceProps }: { dev: DeviceSnapshot; setDevi
     try {
       await setDeviceProps(dev.serial, v);
       toast.success(t('level.propsSaved'));
+    } catch (e) {
+      toast.error(t('common.error', { msg: e instanceof Error ? e.message : String(e) }));
+    }
+    setBusy(false);
+  };
+
+  const setSound = async (on: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await sendCommand(dev.serial, 'sound', { on: on ? 1 : 0 });
+      toast.success(t('level.soundSent'));
     } catch (e) {
       toast.error(t('common.error', { msg: e instanceof Error ? e.message : String(e) }));
     }
@@ -237,6 +263,13 @@ function LevelSensorBody({ dev, setDeviceProps }: { dev: DeviceSnapshot; setDevi
           </Button>
         </span>
       </div>
+      {soundOn >= 0 && (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3 text-sm">
+          <span className="text-muted-foreground">{t('level.sound')}</span>
+          <Switch checked={soundOn === 1} disabled={!dev.online || busy}
+            onCheckedChange={(on) => void setSound(on)} />
+        </div>
+      )}
     </>
   );
 }
@@ -423,13 +456,16 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
           {dev.family === 'flare' && (
             <>
               <FlareBody dev={dev} />
+              <FlareModeSwitch dev={dev} sendCommand={sendCommand} />
+              {Array.isArray(dev.state.manualPresets) && <FlareManualSection dev={dev} sendCommand={sendCommand} />}
               <FlareProgramEditor serial={dev.serial} />
             </>
           )}
-          {dev.family === 'levelSensor' && <LevelSensorBody dev={dev} setDeviceProps={setDeviceProps} />}
+          {dev.family === 'level' && <LevelKeeperBody dev={dev} sendCommand={sendCommand} />}
+          {dev.family === 'levelSensor' && <LevelSensorBody dev={dev} setDeviceProps={setDeviceProps} sendCommand={sendCommand} />}
           {dev.family === 'salinity' && <SalinityBody dev={dev} sendCommand={sendCommand} />}
-          {!['basepump', 'wave', 'roller', 'flare', 'levelSensor', 'salinity'].includes(dev.family) && <GenericBody dev={dev} />}
-          {!hasControls && !['flare', 'levelSensor', 'salinity'].includes(dev.family) && (
+          {!['basepump', 'wave', 'roller', 'flare', 'level', 'levelSensor', 'salinity'].includes(dev.family) && <GenericBody dev={dev} />}
+          {!hasControls && !['flare', 'level', 'levelSensor', 'salinity'].includes(dev.family) && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
               {t('detail.readonlyNote')}
             </p>

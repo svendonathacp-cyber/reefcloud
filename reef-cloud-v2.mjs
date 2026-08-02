@@ -20,6 +20,13 @@ import { createAutolevel } from './reef-autolevel.mjs';
 import { createUpdater } from './reef-updater.mjs';
 import { scanWifiNetworks } from './reef-onboarding.mjs';
 import { parseSgSettings51, sgCalibrateTempPayload, SG_CALIBRATE_MAIN_PAYLOAD } from './reef-salinity.mjs';
+import {
+  LK_STATUS_TEXT,
+  parseLkSettingsExtra, parseLkStatusExtra, parseLkAlert, parseLkManualRefill,
+  parseLkCircuit, parseLkCalibration, parseLkTemporary,
+  parseRfManualTime, parseRfManualData, parseRfOffData,
+  rfManualTimePayload, rfManualUpdatePayload, u32be,
+} from './reef-onboard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -618,6 +625,32 @@ function updateState(serial, cls, method, payloadBuf) {
           log(`  → preciseData-Volldump gesichert (${payloadBuf.length} B, ${serial})`);
         } catch (e) { log(`  !! preciseData-Dump fehlgeschlagen: ${e.message}`); }
       }
+    } else if (method === 'manualTime' && pl.length >= 2) {
+      // Onboard-FW (lokale Firmware-Generation): Restlaufzeit des Manuell-Timers
+      // u16BE Sekunden, 0xFFFF = „Always" → null (reef-onboard.mjs)
+      const patch = parseRfManualTime(pl);
+      if (patch) {
+        m.state = { ...m.state, ...patch };
+        if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+      }
+    } else if (method === 'manualData' && pl.length >= 5) {
+      // Onboard-FW: kompletter Manuell-Modus-Zustand (temp, Power-Size-Nibble,
+      // Timer, Preset-Liste UTF-16BE mit 7 Kanälen % + Intensität). Legt
+      // manualPresets, channelsManual, manualIntensity, manualTimerS an.
+      // rfOnboardMode = zuletzt gemeldeter Modus (nur manual/off ableitbar —
+      // preciseData meldet keinen Modus, dort bleibt der Stand unbestimmt).
+      const patch = parseRfManualData(pl);
+      if (patch) {
+        m.state = { ...m.state, ...patch, rfOnboardMode: 'manual' };
+        if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+      }
+    } else if (method === 'offData' && pl.length >= 2) {
+      // Onboard-FW: „Lampe aus"-Zustand (temp + Power-Size-Nibble)
+      const patch = parseRfOffData(pl);
+      if (patch) {
+        m.state = { ...m.state, ...patch, rfOnboardMode: 'off' };
+        if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+      }
     }
     // (leere temp-Frames: nichts zu parsen — Temp steckt in dashboardData Byte 1)
   }
@@ -628,10 +661,15 @@ function updateState(serial, cls, method, payloadBuf) {
   {
     const pl = payloadBuf;
     if (cls === 'lsRefresh' && method === 'alert') {
-      // 1 Byte: unterer Sensor 0x01, oberer 0x02 (= Index+1, vermutlich die
-      // Sensor-Nummer). Bedeutung unklar (Live-Verifikation 02.08.) → kein
-      // State daraus ableiten, still akzeptieren. Das Frame-Log ist für
-      // Refresh-Klassen bereits gedrosselt.
+      // 1 Byte: Zustands-Push (Onboard-JS: gleiche Code-Tabelle wie data-Byte 1).
+      // Das data-Layout weicht semantisch vom Onboard-JS ab (bekannter Bruch —
+      // Live-Verifikation folgt), daher hier KEINE Alarm-Ableitung: nur den
+      // Roh-Code als lsAlertCode ablegen, damit schnelle Wechsel zwischen zwei
+      // data-Frames nicht verloren gehen.
+      if (pl.length >= 1) {
+        m.state = { ...m.state, lsAlertCode: pl[0] };
+        if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+      }
       return;
     }
     if (cls === 'lsRefresh' && method === 'data' && pl.length >= 3) {
@@ -660,7 +698,9 @@ function updateState(serial, cls, method, payloadBuf) {
       // Frische-Stempel NUR für echte Datenframes — das Autolevel-Frische-Gate
       // darf sich nicht auf lsRefresh/alert o. ä. stützen.
       m.lastLsDataTs = Date.now();
-      altParsed = { sensorIndex: idx, code, alarm, covered: deriveCovered(alarm, alarmWhenFor(serial)) };
+      // soundOn (Byte 2: 0 = aus, 1 = an) additiv aus dem Onboard-JS-Layout —
+      // die Index/Code-Logik oben bleibt unverändert.
+      altParsed = { sensorIndex: idx, code, alarm, covered: deriveCovered(alarm, alarmWhenFor(serial)), soundOn: pl[2] === 1 ? 1 : 0 };
     } else if (cls === 'tcRefresh' && method === 'settings' && pl.length >= 4) {
       // Kurz-Layout (4 B): u32BE @0; >= 1000 → temperatureC = raw/1000
       // (25400 = 25,4 °C, gegen Display kalibriert).
@@ -698,16 +738,46 @@ function updateState(serial, cls, method, payloadBuf) {
         calibrationMl: pl.readUInt16BE(4),
         maxRefillRuntimeS: pl.readUInt32BE(25),
         led: pl[33],
+        // Additive Onboard-Felder (Geräte-JS-Layout, BE): Statuscode,
+        // Kalibrierdatum + fällig, todayMl im settings-Frame, Countdowns,
+        // manueller Refill Ist/Soll, Temporary-Off-Rest (reef-onboard.mjs)
+        ...parseLkSettingsExtra(pl),
       };
     } else if (cls === 'lkRefresh' && method === 'status' && pl.length >= 12) {
       // ACHTUNG: todayMl ist Little-Endian (einzige LE-Stelle im Protokoll)
       const statusCode = pl[0];
       altParsed = {
         statusCode,
-        status: { 0: 'normal', 1: 'filling', 5: 'high', 6: 'low' }[statusCode] ?? 'unknown',
+        // Mapping additiv erweitert (Onboard-JS): 2 = manueller Refill,
+        // 3 = Kreislauf-Befüllung, 4 = Kalibrierung, 7 = Temporary-Off
+        status: LK_STATUS_TEXT[statusCode] ?? 'unknown',
         todayMl: pl.readUInt32LE(4),
         refillRuntimeS: pl.readUInt32BE(8),
+        // Kandidaten-Keys nach dem Onboard-JS (todayMl u32BE@1, Restsekunden
+        // u32BE@5) — widersprechen der LE@4-Lesart oben; beide bleiben
+        // parallel im State, Verifikation live offen.
+        ...parseLkStatusExtra(pl),
       };
+    } else if (cls === 'lkRefresh' && method === 'alert' && pl.length >= 1) {
+      // Kalibrier-Alarm (Push-Äquivalent zu settings-Byte 10)
+      altParsed = parseLkAlert(pl);
+    } else if (cls === 'lkRefresh' && method === 'manualRefill' && pl.length >= 8) {
+      // Fortschritt manueller Refill: dosiert / Soll (ml)
+      altParsed = parseLkManualRefill(pl);
+    } else if (cls === 'lkRefresh' && method === 'circuit' && pl.length >= 1) {
+      // Kreislauf-Befüllung läuft: Countdown (s)
+      altParsed = parseLkCircuit(pl);
+    } else if (cls === 'lkRefresh' && method === 'calibration' && pl.length >= 1) {
+      // Kalibrierung läuft: Countdown (s)
+      altParsed = parseLkCalibration(pl);
+    } else if (cls === 'lkRefresh' && method === 'temporary') {
+      // Temporary-Off-Countdown (u32BE s). Leerer/NUL-only-Payload = „aus"
+      // (Geräte-JS §1.10) → Parser setzt den Restwert auf 0, kein Längen-Gate.
+      altParsed = parseLkTemporary(pl);
+    } else if (cls === 'lkRefresh' && ['manualRefillStop', 'circuitStop', 'calibrationStop'].includes(method)) {
+      // Payload-lose Stopp-Frames (Onboard-JS): Vorgang beendet/abgebrochen —
+      // still akzeptieren, kein State daraus ableiten.
+      return;
     }
   }
   if (altParsed) {
@@ -852,6 +922,113 @@ function buildCommandFrame(serial, action, params) {
       // sgSound/on|off ohne Payload (Geräte-JS: send mit void 0).
       // Vorbereitet, UI folgt (hat bewusst noch keinen UI-Aufrufer).
       return ['sgSound', onOff(params.on) ? 'on' : 'off', []];
+    // ---------- Level Keeper (RFLK, Onboard-Protokoll — Frames aus dem Geräte-JS) ----------
+    case 'level:setMode': {
+      // lkSet/settings: u8 Modus 0–5 (0=AUS, 1=60min, 2=30min, 3=10min, 4=∞, 5=Hysterese)
+      const mode = Number(params.mode);
+      if (!Number.isInteger(mode) || mode < 0 || mode > 5) throw new Error('mode 0–5 erwartet');
+      return ['lkSet', 'settings', [mode]];
+    }
+    case 'level:setMaxRefillTime': {
+      // lkSet/maxRefillTime: u32BE Sekunden (0 = Watchdog aus, max. 60 min)
+      const s = Number(params.seconds);
+      if (!Number.isFinite(s) || s < 0 || s > 3600) throw new Error('seconds 0–3600 erwartet');
+      return ['lkSet', 'maxRefillTime', u32be(s)];
+    }
+    case 'level:temporaryOff': {
+      // lkSet/temporaryOff: u32BE Sekunden (max. 60 min)
+      const s = Number(params.seconds);
+      if (!Number.isFinite(s) || s < 0 || s > 3600) throw new Error('seconds 0–3600 erwartet');
+      return ['lkSet', 'temporaryOff', u32be(s)];
+    }
+    case 'level:setLight':
+      // lkSet/light: u8 (1 = an, 0 = aus)
+      return ['lkSet', 'light', [onOff(params.on)]];
+    case 'level:calibrateTime': {
+      // lkCalibration/time: u8 Dauer in s (0–255)
+      const s = Number(params.seconds);
+      if (!Number.isInteger(s) || s < 0 || s > 255) throw new Error('seconds 0–255 erwartet');
+      return ['lkCalibration', 'time', [s]];
+    }
+    case 'level:calibrateStart':
+      return ['lkCalibration', 'start', []];
+    case 'level:calibrateStop':
+      return ['lkCalibration', 'stop', []];
+    case 'level:circuitStart':
+      return ['lkCalibration', 'circuitStart', []];
+    case 'level:circuitStop':
+      return ['lkCalibration', 'circuitStop', []];
+    case 'level:calibrateValue': {
+      // lkCalibration/value: u32BE tatsächlich abgegebene Menge ml (max. 100 000)
+      const ml = Number(params.ml);
+      if (!Number.isFinite(ml) || ml < 0 || ml > 100000) throw new Error('ml 0–100000 erwartet');
+      return ['lkCalibration', 'value', u32be(ml)];
+    }
+    case 'level:calibrateNotification': {
+      // lkCalibration/notification: u8 Erinnerungs-Index 0–3 (1 W / 2 W / 1 M / 3 M)
+      const idx = Number(params.index);
+      if (!Number.isInteger(idx) || idx < 0 || idx > 3) throw new Error('index 0–3 erwartet');
+      return ['lkCalibration', 'notification', [idx]];
+    }
+    case 'level:manualRefill': {
+      // lkManualRefill/start: u32BE Sollmenge ml (max. 100 000)
+      const ml = Number(params.ml);
+      if (!Number.isFinite(ml) || ml <= 0 || ml > 100000) throw new Error('ml 1–100000 erwartet');
+      return ['lkManualRefill', 'start', u32be(ml)];
+    }
+    case 'level:manualRefillStop':
+      return ['lkManualRefill', 'stop', []];
+    // ---------- Level Sensor (RFLS, Onboard-Protokoll) ----------
+    case 'levelSensor:sound':
+      // lsSound/on|off ohne Payload (Geräte-JS: setSound)
+      return ['lsSound', onOff(params.on) ? 'on' : 'off', []];
+    case 'levelSensor:trigger': {
+      // lsTrigger/low|high ohne Payload — Alarm-Richtung am Gerät setzen
+      const dir = params.direction === 'high' ? 'high' : params.direction === 'low' ? 'low' : null;
+      if (!dir) throw new Error("direction 'low'|'high' erwartet");
+      return ['lsTrigger', dir, []];
+    }
+    // ---------- Reef Flare (RFRF, Onboard-Protokoll der lokalen Firmware) ----------
+    case 'flare:setManual': {
+      // rfManual/update: komplette Preset-Liste (Report-Layout). Basis = die
+      // aktuellen Presets aus dem State (manualPresets); das aktive Preset
+      // bekommt die neuen Kanäle/Intensität. Ohne State-Basis: 1 Preset „Manual".
+      const ch = Array.isArray(params.channels)
+        ? params.channels.slice(0, 7).map((v) => Math.min(100, Math.max(0, Math.round(Number(v) || 0))))
+        : null;
+      if (!ch || ch.length !== 7) throw new Error('channels: 7 Werte (%) erwartet');
+      const intensity = Math.min(100, Math.max(0, Math.round(Number(params.intensity ?? 100) || 0)));
+      const curPresets = Array.isArray(cur.manualPresets) ? cur.manualPresets : [];
+      let presets;
+      if (curPresets.length) {
+        let sel = curPresets.findIndex((p) => p && p.selected);
+        if (sel < 0) sel = 0;
+        presets = curPresets.slice(0, 8).map((p, i) => ({
+          name: String(p?.name ?? `Preset ${i + 1}`),
+          selected: i === sel,
+          channels: i === sel ? ch : (Array.isArray(p?.channels) ? p.channels : [0, 0, 0, 0, 0, 0, 0]),
+          intensity: i === sel ? intensity : (Number.isFinite(p?.intensity) ? p.intensity : 100),
+        }));
+      } else {
+        presets = [{ name: 'Manual', selected: true, channels: ch, intensity }];
+      }
+      return ['rfManual', 'update', rfManualUpdatePayload(presets)];
+    }
+    case 'flare:manualTime':
+      // rfManual/time: u16BE Sekunden, 0xFFFF = „Always" (seconds 'always'/null)
+      return ['rfManual', 'time', rfManualTimePayload(params.seconds)];
+    case 'flare:setMode': {
+      // rfMode: Methode = Modusname, kein Payload
+      const mode = String(params.mode);
+      if (!['manual', 'precise', 'off'].includes(mode)) throw new Error("mode 'manual'|'precise'|'off' erwartet");
+      return ['rfMode', mode, []];
+    }
+    case 'flare:preciseSelect': {
+      // rfPrecise/select: u8 Preset-Index
+      const idx = Number(params.index);
+      if (!Number.isInteger(idx) || idx < 0 || idx > 7) throw new Error('index 0–7 erwartet');
+      return ['rfPrecise', 'select', [idx]];
+    }
     default:
       throw new Error(`unknown action ${action} für family ${fam}`);
   }

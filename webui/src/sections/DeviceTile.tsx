@@ -1,7 +1,7 @@
 import { Activity, ChevronRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useT } from '@/i18n/I18nContext';
-import { Ago, deviceDisplayName, FAMILY_META, WAVE_MODE_KEYS } from './DeviceCard';
+import { Ago, deviceDisplayName, FAMILY_META, LK_STATUS_KEYS, WAVE_MODE_KEYS } from './DeviceCard';
 import type { DeviceSnapshot } from '@/types/reef';
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -99,6 +99,19 @@ function TileValues({ dev }: { dev: DeviceSnapshot }) {
       <div className="flex items-end justify-between gap-3">
         <BigValue value={num(dev.state.ledTempC)} unit="°C" label={t('detail.temperature')} color={meta.color} />
         <p className="pb-0.5 text-[11px] text-muted-foreground">{on ? t('flare.lightOn') : t('flare.lightOff')}</p>
+      </div>
+    );
+  }
+
+  if (dev.family === 'level') {
+    // Level Keeper: Status + heute nachgefüllte ml (bestehender todayMl-Key;
+    // die Alternativ-Lesart todayMlBe bleibt der Detailansicht vorbehalten)
+    const statusKey = LK_STATUS_KEYS[String(dev.state.status ?? '')];
+    const today = num(dev.state.todayMl, NaN);
+    return (
+      <div className="flex items-end justify-between gap-3">
+        <BigValue value={Number.isFinite(today) ? today : '—'} unit="ml" label={t('lk.today')} color={meta.color} />
+        <p className="pb-0.5 text-[11px] text-muted-foreground">{statusKey ? t(statusKey) : t('lk.status.unknown')}</p>
       </div>
     );
   }
