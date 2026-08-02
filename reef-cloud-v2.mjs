@@ -279,6 +279,35 @@ function saveNames() {
   fs.renameSync(tmp, NAMES_FILE);
 }
 
+// ---------- Letzte bekannte Geräte-IPs persistieren ----------
+// Die Erreichbarkeits-Probe braucht eine IP — ohne Persistenz ist sie nach
+// einem Server-Neustart bis zum nächsten Geräte-Login blind (02.08.: Altgeräte
+// mit halb-offener TCP-Verbindung blieben stumm, niemand konnte sie finden).
+// Laufzeitdaten (LAN-IPs) — steht in .gitignore. Schreiben atomar.
+const IPS_FILE = path.join(__dirname, 'device-ips.json');
+const knownIps = new Map();
+try {
+  for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(IPS_FILE, 'utf8')))) {
+    if (typeof v === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(v)) knownIps.set(k, v);
+  }
+  if (knownIps.size) log(`Geräte-IPs geladen: ${knownIps.size} letzte IPs aus device-ips.json`);
+} catch { /* Datei optional oder defekt */ }
+
+let ipsSaveTimer = null;
+function saveIps() {
+  // Entprellt: Logins kommen oft in Bursts (Power-Reset mehrerer Geräte)
+  if (ipsSaveTimer) return;
+  ipsSaveTimer = setTimeout(() => {
+    ipsSaveTimer = null;
+    try {
+      const tmp = IPS_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(knownIps), null, 2) + '\n');
+      fs.renameSync(tmp, IPS_FILE);
+    } catch (e) { log(`!! device-ips.json nicht geschrieben: ${e.message}`); }
+  }, 2000);
+  ipsSaveTimer.unref();
+}
+
 // Alle Geräte aus dem Tank-Modell von Anfang an kennen — sonst zeigen Web-UI
 // und Tunnel nach einem Neustart nur die Geräte, die sich seitdem eingeloggt
 // haben (Bug 02.08.: 6 statt 12 Karten).
@@ -286,6 +315,8 @@ if (tankModel) {
   for (const d of tankModel.tanks[0].devices) metaFor(d.serial);
   log(`deviceMeta initialisiert: ${deviceMeta.size} bekannte Geräte aus dem Tank-Modell`);
 }
+// Persistierte IPs ins Meta seeden — damit die Probe direkt nach dem Start arbeitet
+for (const [serial, ip] of knownIps) metaFor(serial).ip = ip;
 
 // ---------- Erreichbarkeits-Ping („Hello-Ping") für offline Geräte ----------
 // Die Geräte sind WS-Clients — der Server kann keine WS-Verbindung ZUM Gerät
@@ -771,6 +802,7 @@ function handleDeviceFrame(ws, buf, peer) {
       const meta = metaFor(f.serial);
       meta.ip = ws.deviceIp || meta.ip;
       meta.lastSeen = Date.now();
+      if (ws.deviceIp) { knownIps.set(f.serial, ws.deviceIp); saveIps(); }
       try { meta.firmware = JSON.parse(f.payload.toString('utf8').replace(/\0+$/, '')).version || meta.firmware; } catch {}
       announce(f.serial, true);
     }
@@ -813,6 +845,7 @@ function handleDeviceFrame(ws, buf, peer) {
       meta.ip = ws.deviceIp || meta.ip;
       meta.firmware = version || meta.firmware;
       meta.lastSeen = Date.now();
+      if (ws.deviceIp) { knownIps.set(f.serial, ws.deviceIp); saveIps(); }
       announce(f.serial, true);
     }
     const loginReply = loadReplay('0030_CLOUD_GER_T_status_login_RFRFM52302210014.bin', { serial: f.serial });

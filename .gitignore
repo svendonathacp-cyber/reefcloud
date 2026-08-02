@@ -26,3 +26,4 @@ programs/
 
 # Geräte-Spitznamen (Laufzeitdaten)
 names.json
+device-ips.json
