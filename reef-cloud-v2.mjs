@@ -719,7 +719,11 @@ function handleDeviceFrame(ws, buf, peer) {
       (now.getFullYear() >> 8) & 255, now.getFullYear() & 255,
       now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(),
     ], f.serial);
-    log(`  → Altgerät ${f.serial} eingeloggt (email=${email}, key=${key}, version=${version})`);
+    // Account-Key maskiert loggen: das Klartext-Log liegt ungeschützt neben
+    // dem Server. E-Mail bleibt sichtbar (Owner-Identifikation im LAN-Kontext),
+    // der Key (Reef-Factory-Account-Geheimnis) nur als Präfix zum Wiedererkennen.
+    const maskedKey = key ? key.slice(0, 2) + '***' : key;
+    log(`  → Altgerät ${f.serial} eingeloggt (email=${email}, key=${maskedKey}, version=${version})`);
     // Altgeräte-Priming: <prefix>Connect/join nachschieben (Payload = serial\0,
     // extra = join_-Tag, exakt wie die App — Original-Mitschnitt 0023). Erst dann
     // starten die Geräte ihre Periodik (z. B. Flare dashboardData alle ~5 s) —
