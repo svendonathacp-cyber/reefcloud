@@ -1,9 +1,10 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
-  BasepumpBody, FlareBody, FAMILY_META, GenericBody, RollerBody, WaveBody,
+  BasepumpBody, FlareBody, FAMILY_META, GenericBody, RollerBody, WaveBody, WAVE_MODE_KEYS,
 } from './DeviceCard';
 import FlareProgramEditor from './FlareProgramEditor';
+import { useT } from '@/i18n/I18nContext';
 import type { CommandFn, DeviceSnapshot } from '@/types/reef';
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -31,31 +32,35 @@ function clockFmt(c: unknown): string {
 }
 
 function StatsRow({ dev }: { dev: DeviceSnapshot }) {
+  const t = useT();
   switch (dev.family) {
     case 'basepump':
       return (
         <>
-          <BigStat label="Stärke" value={num(dev.state.speed)} unit="%" />
-          <BigStat label="Modus" value={str(dev.state.mode)} accent={false} />
-          <BigStat label="Fütterung" value={`${num(dev.state.feedModeTime)} min`} accent={false} />
+          <BigStat label={t('speed.label')} value={num(dev.state.speed)} unit="%" />
+          <BigStat label={t('common.mode')} value={str(dev.state.mode)} accent={false} />
+          <BigStat label={t('basepump.feeding')} value={`${num(dev.state.feedModeTime)} min`} accent={false} />
         </>
       );
-    case 'wave':
+    case 'wave': {
+      const m = num(dev.state.mode);
+      const modeKey = WAVE_MODE_KEYS[m];
       return (
         <>
-          <BigStat label="Stärke" value={num(dev.state.speed)} unit="%" />
-          <BigStat label="Modus" value={{ 1: 'Konstant', 2: 'Puls', 3: 'Sinus', 4: 'Zufällig' }[num(dev.state.mode)] ?? num(dev.state.mode)} accent={false} />
-          <BigStat label="Uhr" value={clockFmt(dev.state.clock)} accent={false} />
+          <BigStat label={t('speed.label')} value={num(dev.state.speed)} unit="%" />
+          <BigStat label={t('common.mode')} value={modeKey ? t(modeKey) : m} accent={false} />
+          <BigStat label={t('wave.clock')} value={clockFmt(dev.state.clock)} accent={false} />
         </>
       );
+    }
     case 'roller': {
       const roll = obj(dev.state.roll);
       const pct = Math.round((num(roll.currentLength) / Math.max(1, num(roll.startLength, 1))) * 100);
       return (
         <>
-          <BigStat label="Vlies" value={pct} unit="%" />
-          <BigStat label="Wechsel in" value={num(roll.daysToReplace)} unit="Tagen" accent={false} />
-          <BigStat label="Heute" value={num(roll.todayUsed)} unit="mm" accent={false} />
+          <BigStat label={t('detail.fleece')} value={pct} unit="%" />
+          <BigStat label={t('detail.replaceIn')} value={num(roll.daysToReplace)} unit={t('detail.days')} accent={false} />
+          <BigStat label={t('detail.today')} value={num(roll.todayUsed)} unit="mm" accent={false} />
         </>
       );
     }
@@ -64,9 +69,9 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
       const on = dev.state.on === true || num(dev.state.on) === 1;
       return (
         <>
-          <BigStat label="Temperatur" value={num(dev.state.ledTempC)} unit="°C" />
-          <BigStat label="Status" value={on ? 'An' : 'Aus'} accent={false} />
-          <BigStat label="Kanal-Max" value={channels.length ? Math.max(...channels) : 0} unit="%" accent={false} />
+          <BigStat label={t('detail.temperature')} value={num(dev.state.ledTempC)} unit="°C" />
+          <BigStat label={t('detail.status')} value={on ? t('common.on') : t('common.off')} accent={false} />
+          <BigStat label={t('detail.maxChannel')} value={channels.length ? Math.max(...channels) : 0} unit="%" accent={false} />
         </>
       );
     }
@@ -83,6 +88,7 @@ interface Props {
 
 // Geräte-Detailseite im Stil der Reef-Factory-Einstellungsseiten
 export default function DeviceDetail({ dev, now, sendCommand }: Props) {
+  const t = useT();
   const meta = FAMILY_META[dev.family] ?? FAMILY_META.unknown;
   const { Icon } = meta;
   const hasControls = ['basepump', 'wave', 'roller'].includes(dev.family);
@@ -92,11 +98,11 @@ export default function DeviceDetail({ dev, now, sendCommand }: Props) {
         <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[#009deb]/15 to-[#17c3d6]/15">
           <Icon className="h-6 w-6 text-[#009deb]" />
         </div>
-        <h2 className="text-2xl font-semibold tracking-tight">{dev.name ?? meta.name}</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">{dev.name ?? t(meta.nameKey)}</h2>
         <p className="mt-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <span>{meta.name}</span>·<span className="font-mono text-xs">{dev.serial}</span>·
+          <span>{t(meta.nameKey)}</span>·<span className="font-mono text-xs">{dev.serial}</span>·
           <Badge variant={dev.online ? 'default' : 'secondary'} className="text-[10px]">
-            {dev.online ? 'online' : 'offline'}
+            {t(dev.online ? 'detail.online' : 'detail.offline')}
           </Badge>
         </p>
       </div>
@@ -119,15 +125,17 @@ export default function DeviceDetail({ dev, now, sendCommand }: Props) {
           {!['basepump', 'wave', 'roller', 'flare'].includes(dev.family) && <GenericBody dev={dev} />}
           {!hasControls && dev.family !== 'flare' && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-              Nur Anzeige — Steuerbefehle für diesen Gerätetyp sind noch nicht verifiziert.
+              {t('detail.readonlyNote')}
             </p>
           )}
         </CardContent>
       </Card>
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
-        {dev.firmware ? `Firmware ${dev.firmware}` : 'Firmware unbekannt'} · {dev.ip || 'IP unbekannt'} ·
-        zuletzt gesehen {now && dev.lastSeen ? `vor ${Math.max(0, Math.round((now - dev.lastSeen) / 1000))} s` : 'nie'}
+        {dev.firmware ? t('detail.firmware', { v: dev.firmware }) : t('detail.firmwareUnknown')} · {dev.ip || t('detail.ipUnknown')} ·
+        {' '}{now && dev.lastSeen
+          ? t('detail.lastSeen', { s: Math.max(0, Math.round((now - dev.lastSeen) / 1000)) })
+          : t('time.never')}
       </p>
     </div>
   );

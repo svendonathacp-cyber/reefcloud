@@ -3,27 +3,29 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { tStatic, useT } from '@/i18n/I18nContext';
+import type { MessageKey } from '@/i18n/messages';
 import type { FlareProgram } from '@/types/reef';
 
 // Kanäle der Reef flare M (App-Modell, 7 Kanäle — Reihenfolge wie im RF-Export)
-const CHANNELS = [
-  { name: 'UV', color: '#7c3aed' },
-  { name: 'Violett', color: '#a855f7' },
-  { name: 'Indigo', color: '#6366f1' },
-  { name: 'Blau', color: '#3b82f6' },
-  { name: 'Grün', color: '#22c55e' },
-  { name: 'Rot', color: '#ef4444' },
-  { name: 'Weiß', color: '#94a3b8' },
-];
+const CHANNELS: readonly { nameKey: MessageKey; color: string }[] = [
+  { nameKey: 'channel.1', color: '#7c3aed' },
+  { nameKey: 'channel.2', color: '#a855f7' },
+  { nameKey: 'channel.3', color: '#6366f1' },
+  { nameKey: 'channel.4', color: '#3b82f6' },
+  { nameKey: 'channel.5', color: '#22c55e' },
+  { nameKey: 'channel.6', color: '#ef4444' },
+  { nameKey: 'channel.7', color: '#94a3b8' },
+] as const;
 
-const DEFAULT_PROGRAM: FlareProgram = {
-  name: 'Mein Programm',
+const defaultProgram = (name: string): FlareProgram => ({
+  name,
   intensity: 70,
   points: [
     { t: 0, l: [0, 0, 0, 0, 0, 0, 0] },
     { t: 1440, l: [0, 0, 0, 0, 0, 0, 0] },
   ],
-};
+});
 
 // SVG-Geometrie
 const W = 960, H = 300, ML = 14, MR = 14, MT = 34, MB = 30;
@@ -39,7 +41,8 @@ interface Props {
 // Lichtprogramm-Editor im Stil der RF-Cloud: 24h-Kurven pro Kanal, Punkte ziehen,
 // Werte pro Kanal am ausgewählten Punkt einstellen, Gesamtintensität regeln.
 export default function FlareProgramEditor({ serial }: Props) {
-  const [program, setProgram] = useState<FlareProgram>(DEFAULT_PROGRAM);
+  const t = useT();
+  const [program, setProgram] = useState<FlareProgram>(() => defaultProgram(tStatic('flareEditor.defaultName')));
   const [sel, setSel] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -51,9 +54,9 @@ export default function FlareProgramEditor({ serial }: Props) {
     try {
       const r = await fetch(`/api/program?serial=${encodeURIComponent(serial)}`);
       const j = await r.json();
-      setProgram(j.program ?? DEFAULT_PROGRAM);
+      setProgram(j.program ?? defaultProgram(tStatic('flareEditor.defaultName')));
     } catch {
-      setProgram(DEFAULT_PROGRAM);
+      setProgram(defaultProgram(tStatic('flareEditor.defaultName')));
     } finally {
       setLoaded(true);
       setDirty(false);
@@ -155,17 +158,17 @@ export default function FlareProgramEditor({ serial }: Props) {
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
       if (j.uploaded) {
-        toast.success('Programm an die Lampe gesendet', {
-          description: `Version ${j.version} — die Lampe bestätigt den Empfang mit einem Programm-Re-Push.`,
+        toast.success(t('flareEditor.sentToLamp'), {
+          description: t('flareEditor.sentDescription', { version: String(j.version) }),
         });
       } else {
-        toast.success('Programm gespeichert', {
-          description: 'Lampe gerade offline — nach dem nächsten Login der Lampe erneut speichern, um hochzuladen.',
+        toast.success(t('flareEditor.saved'), {
+          description: t('flareEditor.savedOfflineDescription'),
         });
       }
       setDirty(false);
     } catch (e) {
-      toast.error('Speichern fehlgeschlagen', { description: String(e) });
+      toast.error(t('flareEditor.saveFailed'), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -177,9 +180,9 @@ export default function FlareProgramEditor({ serial }: Props) {
     <div className="mt-6 border-t border-border/60 pt-5">
       {/* Tabs wie in der RF-App (nur PROGRAMME aktiv) */}
       <div className="mb-4 flex items-center justify-center gap-6 text-xs font-semibold uppercase tracking-wider">
-        <span className="text-foreground">Programme</span>
-        <span className="cursor-not-allowed text-muted-foreground/50" title="folgt">Zeitschaltmodus</span>
-        <span className="cursor-not-allowed text-muted-foreground/50" title="folgt">Ausschalten</span>
+        <span className="text-foreground">{t('flareEditor.programs')}</span>
+        <span className="cursor-not-allowed text-muted-foreground/50" title={t('flareEditor.comingSoon')}>{t('flareEditor.timerMode')}</span>
+        <span className="cursor-not-allowed text-muted-foreground/50" title={t('flareEditor.comingSoon')}>{t('flareEditor.powerOff')}</span>
       </div>
 
       {/* Name + Intensität */}
@@ -188,10 +191,10 @@ export default function FlareProgramEditor({ serial }: Props) {
           value={program.name}
           onChange={(e) => mutate((p) => ({ ...p, name: e.target.value }))}
           className="h-8 w-48 text-sm"
-          placeholder="Programmname"
+          placeholder={t('flareEditor.namePlaceholder')}
         />
         <div className="flex min-w-56 flex-1 items-center gap-2">
-          <span className="whitespace-nowrap text-xs text-muted-foreground">Gesamtintensität</span>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{t('flareEditor.intensity')}</span>
           <input
             type="range" min={0} max={100} value={program.intensity}
             onChange={(e) => mutate((p) => ({ ...p, intensity: Number(e.target.value) }))}
@@ -215,10 +218,10 @@ export default function FlareProgramEditor({ serial }: Props) {
           <line key={v} x1={ML} x2={W - MR} y1={yOf(v)} y2={yOf(v)} stroke="#e5edf3" strokeDasharray="4 4" />
         ))}
         {/* Zeitachse */}
-        {Array.from({ length: 7 }, (_, i) => i * 240).map((t) => (
-          <g key={t}>
-            <line x1={xOf(t)} x2={xOf(t)} y1={MT} y2={H - MB} stroke="#eef3f7" />
-            <text x={xOf(t)} y={H - 10} textAnchor="middle" fontSize="13" fill="#8aa0b4">{fmtT(t)}</text>
+        {Array.from({ length: 7 }, (_, i) => i * 240).map((time) => (
+          <g key={time}>
+            <line x1={xOf(time)} x2={xOf(time)} y1={MT} y2={H - MB} stroke="#eef3f7" />
+            <text x={xOf(time)} y={H - 10} textAnchor="middle" fontSize="13" fill="#8aa0b4">{fmtT(time)}</text>
           </g>
         ))}
         {/* Jetzt-Marker */}
@@ -227,7 +230,7 @@ export default function FlareProgramEditor({ serial }: Props) {
         {/* Kurven pro Kanal */}
         {CHANNELS.map((c, ch) => (
           <polyline
-            key={c.name}
+            key={c.nameKey}
             points={sorted.map((pt) => `${xOf(pt.t)},${yOf(pt.l[ch] ?? 0)}`).join(' ')}
             fill="none" stroke={c.color} strokeWidth="2" strokeLinejoin="round" opacity="0.85"
           />
@@ -250,7 +253,7 @@ export default function FlareProgramEditor({ serial }: Props) {
                 className="cursor-grab"
                 onPointerDown={onHandleDown(i, ch)}
               >
-                <title>{`${c.name} · ${fmtT(pt.t)} · ${Math.round((pt.l[ch] ?? 0) * 100)} %`}</title>
+                <title>{t('flareEditor.pointTooltip', { channel: t(c.nameKey), time: fmtT(pt.t), value: Math.round((pt.l[ch] ?? 0) * 100) })}</title>
               </rect>
             );
           }),
@@ -274,7 +277,7 @@ export default function FlareProgramEditor({ serial }: Props) {
       {selPt ? (
         <div className="mt-4">
           <div className="mb-3 flex items-center justify-center gap-3 text-sm">
-            <span className="text-muted-foreground">Punkt</span>
+            <span className="text-muted-foreground">{t('flareEditor.point')}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(-5)}>−5 min</Button>
             <span className="w-16 text-center text-lg font-bold text-[#009deb]">{fmtT(selPt.t)}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(5)}>+5 min</Button>
@@ -283,9 +286,9 @@ export default function FlareProgramEditor({ serial }: Props) {
             {CHANNELS.map((c, ch) => {
               const pct = Math.round((selPt.l[ch] ?? 0) * 100);
               return (
-                <div key={c.name} className="flex items-center gap-2">
+                <div key={c.nameKey} className="flex items-center gap-2">
                   <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: c.color }} />
-                  <span className="w-14 text-xs text-muted-foreground">{c.name}</span>
+                  <span className="w-14 text-xs text-muted-foreground">{t(c.nameKey)}</span>
                   <input
                     type="range" min={0} max={100} value={pct}
                     onChange={(e) => setChannelValue(ch, Number(e.target.value))}
@@ -300,7 +303,7 @@ export default function FlareProgramEditor({ serial }: Props) {
         </div>
       ) : (
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          Punkt antippen zum Bearbeiten — horizontal ziehen = Uhrzeit, vertikal = Kanalwert.
+          {t('flareEditor.tapPoint')}
         </p>
       )}
 
@@ -308,29 +311,27 @@ export default function FlareProgramEditor({ serial }: Props) {
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
           <Button size="sm" className="bg-green-500 text-white hover:bg-green-600" onClick={addPoint}>
-            <Plus className="mr-1 h-4 w-4" /> Punkt hinzufügen
+            <Plus className="mr-1 h-4 w-4" /> {t('flareEditor.addPoint')}
           </Button>
           <Button
             size="sm" variant="destructive" onClick={removePoint}
             disabled={sel === null || sorted.length <= 2}
           >
-            <Trash2 className="mr-1 h-4 w-4" /> Punkt löschen
+            <Trash2 className="mr-1 h-4 w-4" /> {t('flareEditor.deletePoint')}
           </Button>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => void load()} disabled={!dirty}>
-            Abbrechen
+            {t('common.cancel')}
           </Button>
           <Button size="sm" className="bg-[#009deb] text-white hover:bg-[#0088cc]" onClick={() => void save()} disabled={!dirty || saving || !loaded}>
-            {saving ? 'Speichere…' : 'O.K.'}
+            {saving ? t('flareEditor.saving') : t('flareEditor.ok')}
           </Button>
         </div>
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Beim Speichern wird das Programm per rfPrecise/update an die Lampe gesendet und anhand
-        des Programm-Re-Pushs (Version + Inhalt) verifiziert. Das aktuelle Lampenprogramm
-        lädt der Editor automatisch, solange keine eigene Variante gespeichert ist.
+        {t('flareEditor.footnote')}
       </p>
     </div>
   );

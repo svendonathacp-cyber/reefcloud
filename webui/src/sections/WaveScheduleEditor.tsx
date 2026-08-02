@@ -3,15 +3,17 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { useT } from '@/i18n/I18nContext';
+import type { MessageKey } from '@/i18n/messages';
 import type { CommandFn, DeviceSnapshot } from '@/types/reef';
 
 // Wave-Modi (verifiziert 02.08. gegen App-Mitschnitt):
 // 1 Konstant {speed} | 2 Puls / 3 Sinus / 4 Zufällig {minSpeed,maxSpeed,period}
-const MODES = [
-  { id: 1, name: 'Konstant', color: '#9ca3af' },
-  { id: 2, name: 'Puls', color: '#67e8f9' },
-  { id: 3, name: 'Sinus', color: '#86efac' },
-  { id: 4, name: 'Zufällig', color: '#fca5a5' },
+const MODES: readonly { id: number; nameKey: MessageKey; color: string }[] = [
+  { id: 1, nameKey: 'waveMode.1', color: '#9ca3af' },
+  { id: 2, nameKey: 'waveMode.2', color: '#67e8f9' },
+  { id: 3, nameKey: 'waveMode.3', color: '#86efac' },
+  { id: 4, nameKey: 'waveMode.4', color: '#fca5a5' },
 ] as const;
 
 export interface ScheduleEntry {
@@ -38,6 +40,7 @@ interface Props {
 // Zeitplan-Editor im Stil der RF-App: Tagesleiste mit farbigen Modus-Blöcken,
 // Block antippen → Modus/Zeit/Parameter bearbeiten, Blöcke hinzufügen/löschen.
 export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
+  const t = useT();
   const loadEntries = (): ScheduleEntry[] => {
     const settings = (dev.state.settings ?? {}) as Record<string, unknown>;
     const s = Array.isArray(settings.schedule) ? (settings.schedule as ScheduleEntry[]) : [];
@@ -118,8 +121,8 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
       const base = sel !== null ? sorted[sel] : sorted[sorted.length - 1];
       if (!base) return;
       const next = sel !== null ? sorted[sel + 1] : null;
-      const t = clamp(base.time + 60, base.time + 5, next ? next.time - 5 : 1435);
-      const fresh = { ...base, time: t };
+      const time = clamp(base.time + 60, base.time + 5, next ? next.time - 5 : 1435);
+      const fresh = { ...base, time };
       list.push(fresh);
       setSel([...list].sort((a, b) => a.time - b.time).indexOf(fresh));
     });
@@ -136,21 +139,21 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
     setBusy(true);
     try {
       await sendCommand(dev.serial, 'setSchedule', { schedule: sorted });
-      toast.success('Zeitplan an die Pumpe gesendet');
+      toast.success(t('waveEditor.sent'));
       setDirty(false);
     } catch (e) {
-      toast.error(`Fehler: ${e instanceof Error ? e.message : e}`);
+      toast.error(t('common.error', { msg: e instanceof Error ? e.message : String(e) }));
     }
     setBusy(false);
   }
 
   const paramRows = selEntry
     ? selEntry.mode === 1
-      ? [{ key: 'speed' as const, label: 'Leistung', value: selEntry.speed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` }]
+      ? [{ key: 'speed' as const, label: t('waveEditor.power'), value: selEntry.speed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` }]
       : [
-          { key: 'minSpeed' as const, label: 'Minimale Leistung', value: selEntry.minSpeed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` },
-          { key: 'maxSpeed' as const, label: 'Maximale Leistung', value: selEntry.maxSpeed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` },
-          { key: 'period' as const, label: 'Frequenz', value: (selEntry.period ?? 10000) / 1000, min: 0.5, max: 20, step: 0.5, fmt: (v: number) => `${v.toFixed(1)} s` },
+          { key: 'minSpeed' as const, label: t('waveEditor.minPower'), value: selEntry.minSpeed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` },
+          { key: 'maxSpeed' as const, label: t('waveEditor.maxPower'), value: selEntry.maxSpeed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` },
+          { key: 'period' as const, label: t('waveEditor.frequency'), value: (selEntry.period ?? 10000) / 1000, min: 0.5, max: 20, step: 0.5, fmt: (v: number) => `${v.toFixed(1)} s` },
         ]
     : [];
 
@@ -161,6 +164,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
         {sorted.map((e, i) => {
           const end = sorted[i + 1]?.time ?? 1440;
           const meta = modeMeta(e.mode);
+          const modeName = t(meta.nameKey);
           const active = sel === i;
           return (
             <g key={i} onClick={() => setSel(active ? null : i)} className="cursor-pointer">
@@ -169,18 +173,18 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
                 fill={meta.color} opacity={active ? 1 : 0.65}
                 stroke={active ? '#0f172a' : 'none'} strokeWidth={active ? 1.5 : 0}
               >
-                <title>{`${meta.name} ab ${fmtT(e.time)}`}</title>
+                <title>{t('waveEditor.blockFrom', { mode: modeName, time: fmtT(e.time) })}</title>
               </rect>
               {xOf(end) - xOf(e.time) > 52 && (
                 <text x={xOf(e.time) + 5} y={MT + 14} fontSize="11" fill="#1f2937" opacity="0.8" pointerEvents="none">
-                  {meta.name}
+                  {modeName}
                 </text>
               )}
             </g>
           );
         })}
-        {Array.from({ length: 7 }, (_, i) => i * 240).map((t) => (
-          <text key={t} x={xOf(t)} y={H - 6} fontSize="11" fill="#8aa0b4" textAnchor="middle">{fmtT(t)}</text>
+        {Array.from({ length: 7 }, (_, i) => i * 240).map((time) => (
+          <text key={time} x={xOf(time)} y={H - 6} fontSize="11" fill="#8aa0b4" textAnchor="middle">{fmtT(time)}</text>
         ))}
       </svg>
 
@@ -197,14 +201,14 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
                 }`}
               >
                 <span className="mx-auto mb-1 block h-3 w-8 rounded-sm" style={{ background: m.color }} />
-                {m.name}
+                {t(m.nameKey)}
               </button>
             ))}
           </div>
 
           {/* Block-Start */}
           <div className="flex items-center justify-center gap-3 text-sm">
-            <span className="text-muted-foreground">Beginnt</span>
+            <span className="text-muted-foreground">{t('waveEditor.starts')}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(-5)}>−5 min</Button>
             <span className="w-16 text-center text-lg font-bold text-[#009deb]">{fmtT(selEntry.time)}</span>
             <Button variant="outline" size="sm" onClick={() => nudgeTime(5)}>+5 min</Button>
@@ -226,7 +230,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
         </div>
       ) : (
         <p className="mt-2 text-center text-xs text-muted-foreground">
-          Block antippen zum Bearbeiten — Modus, Startzeit und Parameter je Block.
+          {t('waveEditor.tapToEdit')}
         </p>
       )}
 
@@ -234,7 +238,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2">
           <Button size="sm" className="bg-green-500 text-white hover:bg-green-600" onClick={addBlock} disabled={sorted.length >= 12}>
-            <Plus className="mr-1 h-4 w-4" /> Block
+            <Plus className="mr-1 h-4 w-4" /> {t('waveEditor.block')}
           </Button>
           <Button size="sm" variant="destructive" onClick={removeBlock} disabled={sel === null || sorted.length <= 1}>
             <Trash2 className="mr-1 h-4 w-4" />
@@ -242,10 +246,10 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled={!dirty || busy} onClick={() => { setEntries(loadEntries()); setDirty(false); setSel(null); }}>
-            Abbrechen
+            {t('common.cancel')}
           </Button>
           <Button size="sm" className="bg-[#009deb] text-white hover:bg-[#0088cc]" disabled={!dev.online || !dirty || busy} onClick={() => void save()}>
-            {busy ? 'Sende…' : 'Übernehmen'}
+            {busy ? t('waveEditor.sending') : t('common.apply')}
           </Button>
         </div>
       </div>
