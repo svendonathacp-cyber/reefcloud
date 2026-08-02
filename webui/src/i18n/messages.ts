@@ -197,6 +197,7 @@ export const de = {
   // Einstellungen — Laden / Fehler
   'settings.loading': 'Einstellungen werden geladen …',
   'settings.loadError': 'Einstellungen konnten nicht geladen werden ({error}). Die laufende Server-Version kennt /api/settings möglicherweise noch nicht — bitte reef-cloud-v2 aktualisieren und neu starten.',
+  'settings.loadErrorNoDetail': 'Einstellungen konnten nicht geladen werden. Die laufende Server-Version kennt /api/settings möglicherweise noch nicht — bitte reef-cloud-v2 aktualisieren und neu starten.',
   'settings.retry': 'Erneut versuchen',
 
   // Einstellungen — Verbindung / Tunnel
@@ -429,6 +430,7 @@ export const en: Record<MessageKey, string> = {
   // Settings — loading / errors
   'settings.loading': 'Loading settings …',
   'settings.loadError': 'Settings could not be loaded ({error}). The running server version may not know /api/settings yet — please update reef-cloud-v2 and restart it.',
+  'settings.loadErrorNoDetail': 'Settings could not be loaded. The running server version may not know /api/settings yet — please update reef-cloud-v2 and restart it.',
   'settings.retry': 'Try again',
 
   // Settings — connection / tunnel

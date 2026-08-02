@@ -104,7 +104,9 @@ export default function Settings() {
       }
       setLoadError(null);
     } catch (e) {
-      setLoadError(errMsg(e));
+      // ApiUnavailableError: kein Roh-Code in der UI — der Folgesatz im
+      // Banner erklärt die Lage bereits (alter Server ohne /api/settings)
+      setLoadError(e instanceof ApiUnavailableError ? '' : errMsg(e));
     } finally {
       setLoading(false);
     }
@@ -167,15 +169,33 @@ export default function Settings() {
     }
   };
 
+  // Fingerprint kopieren: erst Clipboard-API (nur Secure Contexts), sonst
+  // execCommand-Fallback — die UI läuft über http://<lan-ip>:8080, dort
+  // existiert navigator.clipboard nicht bzw. schlägt fehl.
   const copyFingerprint = async () => {
     const fp = status?.cert?.fingerprint256;
     if (!fp) return;
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(fp);
-      toast.success(t('settings.server.copied'));
-    } catch {
-      toast.error(t('settings.server.copyFailed'));
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(fp);
+        ok = true;
+      }
+    } catch { /* fällt auf execCommand zurück */ }
+    if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = fp;
+      ta.readOnly = true;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        ok = document.execCommand('copy');
+      } catch { ok = false; }
+      ta.remove();
     }
+    if (ok) toast.success(t('settings.server.copied'));
+    else toast.error(t('settings.server.copyFailed'));
   };
 
   const guides = useMemo(() => ([
@@ -188,7 +208,7 @@ export default function Settings() {
 
   return (
     <div className="max-w-3xl space-y-8">
-      {loading && !settings && !loadError && (
+      {loading && !settings && loadError === null && (
         <div className="space-y-6">
           <p className="text-sm text-muted-foreground">{t('settings.loading')}</p>
           <div className="rounded-xl border border-border/70 bg-card/80 p-5">
@@ -206,11 +226,11 @@ export default function Settings() {
         </div>
       )}
 
-      {loadError && (
+      {loadError !== null && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="min-w-0 flex-1">
-            <span>{t('settings.loadError', { error: loadError })}</span>
+            <span>{loadError ? t('settings.loadError', { error: loadError }) : t('settings.loadErrorNoDetail')}</span>
             <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={() => void load()}>
               <RefreshCw className="h-3.5 w-3.5" />
               {t('settings.retry')}
@@ -413,26 +433,31 @@ export default function Settings() {
                         </p>
                       )}
                       {status.cert.fingerprint256 && (
-                        <div className="mt-2 flex items-center gap-1.5">
-                          <code className="min-w-0 truncate rounded border border-border/60 bg-secondary/50 px-1.5 py-0.5 font-mono text-[11px] text-foreground/80" title={status.cert.fingerprint256}>
-                            {shortenFingerprint(status.cert.fingerprint256)}
-                          </code>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  onClick={() => void copyFingerprint()}
-                                  aria-label={t('settings.server.copy')}
-                                  className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent><p>{t('settings.server.copy')}</p></TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
+                        <>
+                          <p className="mt-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {t('settings.server.fingerprint')}
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <code className="min-w-0 truncate rounded border border-border/60 bg-secondary/50 px-1.5 py-0.5 font-mono text-[11px] text-foreground/80" title={status.cert.fingerprint256}>
+                              {shortenFingerprint(status.cert.fingerprint256)}
+                            </code>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyFingerprint()}
+                                    aria-label={t('settings.server.copy')}
+                                    className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>{t('settings.server.copy')}</p></TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </>
                       )}
                     </div>
                   )}
