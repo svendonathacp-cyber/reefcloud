@@ -58,6 +58,8 @@
     color: #dbe4f0; padding: 11px 12px; font-size: 15px; outline: none; font-family: ui-monospace, monospace;
   }
   .ipbox input:focus { border-color: #4d7bd6; }
+  .ipbox input.invalid { border-color: #e05d5d; }
+  .iperr { font-size: 12.5px; color: #ffb3b3; margin: 6px 0 0; }
   .piip { color: #52d273; font-weight: 600; }
   figure { margin: 14px 0 4px; }
   svg { display: block; width: 100%; height: auto; }
@@ -143,6 +145,8 @@
     <div class="ipbox">
       <input id="piIp" inputmode="decimal" spellcheck="false" placeholder="IP deines Pi, z. B. 10.0.0.42">
     </div>
+    <p id="ipErr" class="iperr" style="display:none">⚠️ Das sieht nicht wie eine IPv4-Adresse aus
+       (vier Zahlen von 0–255, mit Punkten getrennt). Die Beispiele unten bleiben vorerst unverändert.</p>
     <p style="font-size:12.5px;color:#66789a">Die IP bleibt nur in diesem Browser gespeichert (localStorage), nichts wird versendet.</p>
   </div>
 
@@ -255,8 +259,8 @@
           <li>Richte zuerst <strong>Weg A (AdGuard)</strong> oder <strong>Weg B (Pi-hole)</strong> ein —
               dort passiert die eigentliche Umschreibung.</li>
           <li>Öffne <code>fritz.box</code> im Browser und melde dich an.</li>
-          <li>Gehe zu <strong>Heimnetz → Netzwerk → Netzwerkeinstellungen</strong>.</li>
-          <li>Scrolle zu <strong>„DNS-Server"</strong> bzw. <em>„Lokaler DNS-Server"</em> und trage dort die IP
+          <li>Gehe zu <strong>Heimnetz → Netzwerk → Netzwerkeinstellungen → IPv4-Einstellungen</strong>.</li>
+          <li>Dort findest du <strong>„Lokaler DNS-Server"</strong> — trage die IP
               deines AdGuard-/Pi-hole-Geräts ein (wenn AdGuard/Pi-hole auf demselben Pi laufen:
               <code class="piip">‹Pi-IP›</code>).</li>
           <li>Speichern. Die Fritz!Box verteilt diese DNS-Adresse ab jetzt an alle Geräte im WLAN.</li>
@@ -331,18 +335,45 @@
 <script>
 const LS = 'reefguide:';
 
-/* ---------- Pi-IP: Eingabe, Live-Ersetzung, localStorage ---------- */
+/* ---------- Pi-IP: Eingabe, IPv4-Validierung, Live-Ersetzung, localStorage ---------- */
 const ipInput = document.getElementById('piIp');
+const ipErr = document.getElementById('ipErr');
 const ipSpans = () => [...document.querySelectorAll('.piip')];
+function isIPv4(s) {
+  const m = s.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  return !!m && m.slice(1).every((o) => +o <= 255);
+}
 function applyIp(ip) {
   const shown = ip.trim() || '‹Pi-IP›';
   ipSpans().forEach((el) => { el.textContent = shown; });
 }
-try { ipInput.value = localStorage.getItem(LS + 'piip') || ''; } catch (e) {}
-applyIp(ipInput.value);
+function setIpError(on) {
+  ipInput.classList.toggle('invalid', on);
+  ipErr.style.display = on ? 'block' : 'none';
+}
+let lastValidIp = '';
+try {
+  const saved = localStorage.getItem(LS + 'piip') || '';
+  if (isIPv4(saved)) { lastValidIp = saved; ipInput.value = saved; }
+} catch (e) {}
+applyIp(lastValidIp);
 ipInput.addEventListener('input', () => {
-  applyIp(ipInput.value);
-  try { localStorage.setItem(LS + 'piip', ipInput.value); } catch (e) {}
+  const v = ipInput.value.trim();
+  if (v === '') {
+    setIpError(false);
+    lastValidIp = '';
+    applyIp('');
+    try { localStorage.setItem(LS + 'piip', ''); } catch (e) {}
+  } else if (isIPv4(v)) {
+    setIpError(false);
+    lastValidIp = v;
+    applyIp(v);
+    try { localStorage.setItem(LS + 'piip', v); } catch (e) {}
+  } else {
+    // Ungültig: rotes Feedback, Platzhalter und Speicher bleiben beim letzten gültigen Wert
+    setIpError(true);
+    applyIp(lastValidIp);
+  }
 });
 
 /* ---------- Checkboxen persistent ---------- */
@@ -399,7 +430,10 @@ btn.onclick = async () => {
       '<code>api.reeffactory.com</code> nicht beim Pi.<br>Bitte prüfen: ' +
       '① Ist die DNS-Umschreibung eingetragen (Weg A/B/C oben)? ' +
       '② Nutzt dieses Gerät wirklich dein Heim-DNS (WLAN statt mobiles Netz, kein „Privates Relay"/VPN)? ' +
-      '③ Läuft der reef-cloud-Server überhaupt?');
+      '③ <strong>Android:</strong> Steht <em>„Privates DNS"</em> (Private DNS) in den Netzwerk-Einstellungen ' +
+      'auf „Aus" oder „Automatisch"? Bei einer eingetragenen privaten DNS-Adresse fragt das Handy ' +
+      'AdGuard/Pi-hole komplett am Router vorbei — häufigste Störquelle! ' +
+      '④ Läuft der reef-cloud-Server überhaupt?');
     show(res2, 'wait', 'Test 2 übersprungen — ohne DNS bringt der Zertifikats-Test nichts.');
     btn.disabled = false;
     return;

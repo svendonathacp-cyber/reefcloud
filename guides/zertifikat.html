@@ -336,13 +336,16 @@
       </div>
 
       <div class="step">
-        <h3>3 · Zertifikat installieren</h3>
-        <p>Tippe auf <strong>„Zertifikat installieren"</strong> (oder „Von Speicher installieren"),
-        wähle <strong>„CA-Zertifikat"</strong> und dann die heruntergeladene Datei
-        <code>reef-cloud-cert.crt</code> aus dem Ordner Downloads.</p>
+        <h3>3 · „CA-Zertifikat" wählen und Warnung bestätigen</h3>
+        <p>Tippe auf <strong>„Zertifikat installieren"</strong> (oder „Von Speicher installieren") und wähle
+        <strong>„CA-Zertifikat"</strong>. <strong>Sofort danach</strong> zeigt Android eine Warnung, dass ein
+        CA-Zertifikat den Datenverkehr überwachen könnte — <em>bevor</em> du überhaupt eine Datei auswählst.
+        Das stimmt grundsätzlich — aber dieses Zertifikat kommt von <em>deinem eigenen Pi</em> und gilt nur für
+        die Adresse <code>api.reeffactory.com</code> in deinem WLAN. Tippe auf
+        <strong>„Trotzdem installieren"</strong>.</p>
         <figure>
-          <!-- selbst gezeichnet: Android Zertifikat installieren Auswahl -->
-          <svg viewBox="0 0 320 240" role="img" aria-label="Android: Zertifikat installieren, CA-Zertifikat wählen, Datei auswählen">
+          <!-- selbst gezeichnet: Android Zertifikat installieren, CA-Zertifikat wählen -->
+          <svg viewBox="0 0 320 240" role="img" aria-label="Android: Zertifikat installieren, CA-Zertifikat wählen, danach erscheint sofort eine Warnung">
             <rect x="20" y="8" width="120" height="224" rx="18" fill="#1a2740" stroke="#2c3f61" stroke-width="2"/>
             <circle cx="80" cy="18" r="3" fill="#2c3f61"/>
             <rect x="28" y="26" width="104" height="198" rx="4" fill="#0b1220"/>
@@ -363,22 +366,13 @@
             <text x="200" y="93.5" font-size="7.5" fill="#8fa3c0" font-family="system-ui">VPN- &amp; App-Zertifikat</text>
             <rect x="192" y="104" width="96" height="20" rx="4" fill="#16223a"/>
             <text x="200" y="117.5" font-size="7.5" fill="#8fa3c0" font-family="system-ui">WLAN-Zertifikat</text>
-            <rect x="192" y="140" width="96" height="30" rx="4" fill="#16223a"/>
-            <text x="200" y="153" font-size="7" fill="#66789a" font-family="system-ui">dann Datei wählen:</text>
-            <text x="200" y="164" font-size="7.5" fill="#9fc1ff" font-family="system-ui">reef-cloud-cert.crt</text>
+            <rect x="192" y="140" width="96" height="30" rx="4" fill="#3a2b12" stroke="#ffd479" stroke-width="1.5"/>
+            <text x="200" y="153" font-size="7" fill="#ffd79b" font-family="system-ui">danach erscheint sofort:</text>
+            <text x="200" y="164" font-size="7.5" fill="#ffd79b" font-family="system-ui">⚠ eine Warnung</text>
             <text x="240" y="200" text-anchor="middle" font-size="8" fill="#c4d0e2" font-family="system-ui">„CA-Zertifikat" ✓</text>
           </svg>
-          <figcaption>„CA-Zertifikat" wählen, dann die Datei aus Downloads.</figcaption>
+          <figcaption>„CA-Zertifikat" wählen — die Warnung kommt sofort danach.</figcaption>
         </figure>
-        <label class="checkline" data-key="zert-and-install"><input type="checkbox"> Datei ausgewählt und installiert</label>
-      </div>
-
-      <div class="step">
-        <h3>4 · Warnung bestätigen: „Trotzdem installieren"</h3>
-        <p>Android zeigt eine <strong>Warnung</strong>, dass ein CA-Zertifikat den Datenverkehr überwachen könnte.
-        Das stimmt grundsätzlich — aber dieses Zertifikat kommt von <em>deinem eigenen Pi</em> und gilt nur für
-        die Adresse <code>api.reeffactory.com</code> in deinem WLAN. Tippe auf
-        <strong>„Trotzdem installieren"</strong>.</p>
         <figure>
           <!-- selbst gezeichnet: Android Warn-Dialog -->
           <svg viewBox="0 0 320 240" role="img" aria-label="Android: Warnhinweis mit Button Trotzdem installieren">
@@ -401,9 +395,49 @@
           </svg>
           <figcaption>Die Warnung ist normal — „Trotzdem installieren" wählen.</figcaption>
         </figure>
+        <label class="checkline" data-key="zert-and-warnung"><input type="checkbox"> „CA-Zertifikat" gewählt und Warnung bestätigt</label>
+      </div>
+
+      <div class="step">
+        <h3>4 · Datei auswählen und installieren</h3>
+        <p>Erst <strong>jetzt</strong> öffnet sich die Dateiauswahl. Wähle
+        <code>reef-cloud-cert.crt</code> aus dem Ordner <strong>Downloads</strong> und bestätige mit
+        <strong>„Installieren"</strong>.</p>
+        <figure>
+          <!-- selbst gezeichnet: Android Dateiauswahl mit Downloads-Ordner -->
+          <svg viewBox="0 0 320 240" role="img" aria-label="Android: Dateiauswahl, Ordner Downloads öffnen, Datei reef-cloud-cert.crt wählen">
+            <rect x="100" y="8" width="120" height="224" rx="18" fill="#1a2740" stroke="#2c3f61" stroke-width="2"/>
+            <circle cx="160" cy="18" r="3" fill="#2c3f61"/>
+            <rect x="108" y="26" width="104" height="198" rx="4" fill="#0b1220"/>
+            <rect x="108" y="26" width="104" height="20" fill="#16223a"/>
+            <text x="114" y="40" font-size="9" fill="#dbe4f0" font-family="system-ui">☰ Dateien</text>
+            <!-- Seitenmenü -->
+            <rect x="108" y="46" width="52" height="178" fill="#101a2e"/>
+            <text x="113" y="62" font-size="6.5" fill="#8fa3c0" font-family="system-ui">Zuletzt</text>
+            <text x="113" y="76" font-size="6.5" fill="#8fa3c0" font-family="system-ui">Bilder</text>
+            <text x="113" y="90" font-size="6.5" fill="#8fa3c0" font-family="system-ui">Videos</text>
+            <rect x="110" y="96" width="48" height="14" rx="3" fill="#22314e" stroke="#52d273" stroke-width="1"/>
+            <text x="113" y="106" font-size="6.5" fill="#9fe8bd" font-family="system-ui">Downloads</text>
+            <!-- Dateiliste -->
+            <rect x="166" y="52" width="42" height="10" rx="2" fill="#16223a"/>
+            <text x="169" y="59.5" font-size="5.5" fill="#66789a" font-family="system-ui">foto.jpg</text>
+            <rect x="166" y="66" width="42" height="10" rx="2" fill="#16223a"/>
+            <text x="169" y="73.5" font-size="5.5" fill="#66789a" font-family="system-ui">brief.pdf</text>
+            <rect x="166" y="80" width="42" height="16" rx="2" fill="#22314e" stroke="#52d273" stroke-width="1.5"/>
+            <text x="169" y="87.5" font-size="5.5" fill="#9fc1ff" font-family="system-ui">reef-cloud-</text>
+            <text x="169" y="94.5" font-size="5.5" fill="#9fc1ff" font-family="system-ui">cert.crt 🔐</text>
+            <rect x="166" y="100" width="42" height="10" rx="2" fill="#16223a"/>
+            <text x="169" y="107.5" font-size="5.5" fill="#66789a" font-family="system-ui">notizen.txt</text>
+            <!-- Button -->
+            <rect x="166" y="196" width="42" height="16" rx="8" fill="#2f7d4f"/>
+            <text x="187" y="207" text-anchor="middle" font-size="6.5" fill="#eafff2" font-family="system-ui">Installieren</text>
+            <text x="160" y="232" text-anchor="middle" font-size="7" fill="#8fa3c0" font-family="system-ui">☰ → Downloads → Datei tippen</text>
+          </svg>
+          <figcaption>Im Datei-Dialog links „Downloads" öffnen und die .crt-Datei wählen.</figcaption>
+        </figure>
         <div class="note">✅ Nach der Installation zeigt Android das Zertifikat unter
         <em>„Vertrauenswürdige Anmeldedaten → Benutzer"</em> an. Dort kannst du es später auch wieder entfernen.</div>
-        <label class="checkline" data-key="zert-and-warnung"><input type="checkbox"> Warnung bestätigt — fertig</label>
+        <label class="checkline" data-key="zert-and-install"><input type="checkbox"> Datei ausgewählt und installiert — fertig</label>
       </div>
     </div>
   </div>
@@ -450,7 +484,9 @@
 
 <script>
 const LS = 'reefguide:';
+let platform = 'ios';
 function showPlatform(p) {
+  platform = p;
   document.getElementById('ios').style.display = p === 'ios' ? '' : 'none';
   document.getElementById('android').style.display = p === 'android' ? '' : 'none';
   document.getElementById('tabIos').classList.toggle('active', p === 'ios');
@@ -471,11 +507,24 @@ boxes.forEach((cb) => {
     updateProgress();
   });
 });
+// Fortschritt zählt nur Download + die Checkboxen der aktuell gewählten Plattform.
+// Die localStorage-Schlüssel (zert-ios-*/zert-and-*) bleiben unverändert,
+// damit index.html den Fortschritt cross-page auslesen kann.
+function activeBoxes() {
+  const prefix = platform === 'ios' ? 'zert-ios' : 'zert-and';
+  return boxes.filter((b) => {
+    const k = b.parentElement.dataset.key;
+    return k === 'dl' || k.startsWith(prefix);
+  });
+}
 function updateProgress() {
-  const done = boxes.filter((b) => b.checked).length;
-  const total = boxes.length;
+  const act = activeBoxes();
+  const done = act.filter((b) => b.checked).length;
+  const total = act.length;
   document.getElementById('progBar').style.width = (done / total * 100) + '%';
-  document.getElementById('progText').textContent = done + ' von ' + total + ' Häkchen gesetzt';
+  document.getElementById('progText').textContent =
+    done === total ? '🎉 Zertifikat eingerichtet — weiter mit Schritt 2!'
+                   : done + ' von ' + total + ' Häkchen gesetzt';
 }
 updateProgress();
 </script>
