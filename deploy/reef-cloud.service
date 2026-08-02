@@ -1,0 +1,41 @@
+[Unit]
+Description=reefcloud — lokale Ersatz-Cloud fuer Reef-Factory-Geraete
+# Der Server bindet die WebSocket-Listener erst, wenn das Netzwerk steht.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/reefcloud
+ExecStart=/usr/bin/node reef-cloud-v2.mjs
+Restart=always
+RestartSec=5
+
+# Logging ins Journal: journalctl -u reef-cloud -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=reef-cloud
+
+# Der Dienst bindet privilegierte Ports (80/442/443/444 < 1024) und laeuft
+# deshalb als root — die einfachste und robusteste Variante.
+#
+# Alternative ohne root (nicht getestet, erst nach Abnahme auf echter
+# Hardware aktivieren):
+#   1) User=pi / Group=pi setzen (statt root)
+#   2) Einmalig ausfuehren:
+#      sudo setcap 'cap_net_bind_service=+ep' $(readlink -f /usr/bin/node)
+#      Achtung: gilt fuer ALLE node-Prozesse dieses Benutzers und muss nach
+#      jedem Node-Upgrade erneut gesetzt werden.
+#   3) /opt/reefcloud dem Benutzer pi uebergeben:
+#      sudo chown -R pi:pi /opt/reefcloud
+#      (Zertifikat und /boot/reef-cloud.env muessen dann fuer pi lesbar sein)
+User=root
+Group=root
+
+# Konfiguration: Der Server liest /boot/reef-cloud.env (Fallback: .env im
+# WorkingDirectory). Diese Datei schreibt der Setup-Wizard (Port 8080) beim
+# Erststart selbst — sie enthaelt Secrets und gehoert NIE ins Repo/Image.
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
