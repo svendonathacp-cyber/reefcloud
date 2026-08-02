@@ -41,6 +41,13 @@ curl -fsSL https://raw.githubusercontent.com/svendonathacp-cyber/reefcloud/main/
 Das Skript ist **idempotent**: Es kann jederzeit erneut ausgeführt werden,
 z. B. um auf eine neue Version zu aktualisieren (Installation = Update).
 
+> **Wichtig beim Update:** Das Skript nicht direkt aus dem Repo-Verzeichnis
+> starten (`sudo bash /opt/reefcloud/deploy/install.sh`) — der `git pull`
+> würde die Datei sonst während der Ausführung überschreiben. Immer frisch
+> herunterladen und von dort ausführen (wie oben). Zur Sicherheit erkennt
+> das Skript diesen Fall selbst und startet sich aus einer temporären Kopie
+> neu — verlassen sollte man sich darauf aber nicht.
+
 ## Was das Skript tut
 
 1. Prüft, ob es als root läuft (sonst Abbruch mit Hinweis auf `sudo`).
@@ -91,7 +98,7 @@ z. B. um auf eine neue Version zu aktualisieren (Installation = Update).
 | `systemctl status reef-cloud` | Dienst-Status anzeigen |
 | `journalctl -u reef-cloud -f` | Logs live verfolgen |
 | `sudo systemctl restart reef-cloud` | Dienst neu starten |
-| `sudo bash install.sh` (erneut) | Aktualisieren auf die neueste Version |
+| `install.sh` frisch herunterladen + `sudo bash install.sh` | Aktualisieren auf die neueste Version |
 
 Die Ports des Servers: **443 + 444** (TLS: App bzw. Geräte mit neuer
 Firmware), **442 + 80** (unverschlüsselt: Altgeräte/Fallback), **8080**
@@ -99,6 +106,15 @@ Firmware), **442 + 80** (unverschlüsselt: Altgeräte/Fallback), **8080**
 der Dienst als root. In der Unit-Datei (`deploy/reef-cloud.service`) ist
 kommentiert, wie man stattdessen mit `setcap` und `User=pi` arbeiten
 könnte — diese Variante ist noch nicht auf echter Hardware abgenommen.
+
+> **Fußnote — Node-Pfad:** Die systemd-Unit startet den Server über
+> `/usr/bin/node`. Das passt für Node.js aus der Distribution bzw. von
+> NodeSource (so installiert es das Skript). Wer Node über **nvm**, **volta**
+> o. ä. installiert hat, muss den `ExecStart`-Pfad in
+> `/etc/systemd/system/reef-cloud.service` anpassen
+> (`which node` verrät den richtigen Pfad) und danach
+> `sudo systemctl daemon-reload && sudo systemctl restart reef-cloud`
+> ausführen.
 
 ## Ausblick: fertiges Image
 

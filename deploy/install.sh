@@ -29,8 +29,32 @@ if [[ "${EUID}" -ne 0 ]]; then
   die "Dieses Skript muss als root laufen. Bitte mit 'sudo bash $0' starten."
 fi
 
+# ----------------------------------------------------- Selbst-Update-Falle ---
+# Wird das Skript direkt aus dem Repo-Verzeichnis gestartet
+# (sudo bash /opt/reefcloud/deploy/install.sh), wuerde der spaetere
+# `git pull` genau diese Datei ueberschreiben, waehrend bash sie einliest.
+# Deshalb: laufende Kopie nach mktemp verschieben und von dort neu starten.
+# REEF_INSTALL_REEXEC verhindert eine Endlosschleife.
+if [[ "${REEF_INSTALL_REEXEC:-0}" != "1" ]]; then
+  script_path="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+  case "${script_path}" in
+    "${INSTALL_DIR}"/*)
+      tmp_copy="$(mktemp /tmp/reefcloud-install.XXXXXX.sh)"
+      cp "${script_path}" "${tmp_copy}"
+      chmod +x "${tmp_copy}"
+      echo "[reefcloud] Skript liegt in ${INSTALL_DIR} — starte aus temporaerer Kopie neu (Selbst-Update-Schutz)."
+      exec env REEF_INSTALL_REEXEC=1 bash "${tmp_copy}" "$@"
+      ;;
+  esac
+fi
+
 if [[ ! -f /etc/debian_version ]]; then
   warn "Kein Debian-System erkannt (/etc/debian_version fehlt) — Skript ist für Raspberry Pi OS gedacht, läuft aber weiter."
+fi
+
+# Temporaere Kopie (Selbst-Update-Schutz oben) nach Laufende aufraeumen.
+if [[ "${REEF_INSTALL_REEXEC:-0}" == "1" ]]; then
+  trap 'rm -f "$0" 2>/dev/null || true' EXIT
 fi
 
 log "Starte reefcloud-Installation nach ${INSTALL_DIR} …"
@@ -58,6 +82,11 @@ else
   else
     log "Node.js nicht gefunden. Installiere Node.js ${NODE_MAJOR_LTS} LTS via NodeSource …"
   fi
+  # Das ist der offizielle, von NodeSource dokumentierte Installationsweg
+  # (deb.nodesource.com) — die Warnung in der Doku, fremde Skripte vorher zu
+  # lesen, gilt fuer dieses Install-Skript selbst; die NodeSource-Pipe ist
+  # der vorgesehene Weg des Distributors. Alternativ manuell:
+  # https://github.com/nodesource/distributions#debian-and-ubuntu-based-distributions
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR_LTS}.x" | bash -
   apt-get install -y -qq nodejs
   node_ok || die "Node.js-Installation fehlgeschlagen (gefunden: $(node -v 2>/dev/null || echo 'keins'))."
