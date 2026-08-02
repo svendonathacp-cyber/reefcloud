@@ -16,6 +16,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { parseTankListPayload, generateTankListPayload, newDeviceRecord } from './tanklist-lib.mjs';
 import { startTunnel } from './reef-tunnel.mjs';
 import { ensureCertificate } from './reef-cert.mjs';
+import { createAutolevel } from './reef-autolevel.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -776,6 +777,12 @@ const devices = new Map(); // serial → ws
 const apps = new Set();    // app websockets
 const joins = new Map();   // serial → Set<appWs>  (welche App hat welches Gerät abonniert)
 
+// Ablaufschacht-Stabilisierung (siehe reef-autolevel.mjs): Level-Sensoren
+// regeln die RFP-Stärke. Config autolevel.json (Laufzeitdaten, .gitignore).
+const autolevel = createAutolevel({
+  dir: __dirname, log, metaFor, devices, buildCommandFrame, encodeFrame, captureFrame,
+});
+
 function routeToDevice(serial, buf, fromApp) {
   const dev = devices.get(serial);
   if (dev && dev.readyState === dev.OPEN) { captureFrame(buf, 'out', serial); dev.send(buf); return true; }
@@ -897,7 +904,10 @@ function handleDeviceFrame(ws, buf, peer) {
     return;
   }
   // Alles andere vom Gerät: State fürs Tunnel-Snapshot pflegen + an abonnierende Apps weiterreichen
-  if (f.serial && f.serial !== '0000000000000000') updateState(f.serial, f.cls, f.method, f.payload);
+  if (f.serial && f.serial !== '0000000000000000') {
+    updateState(f.serial, f.cls, f.method, f.payload);
+    autolevel.onStateUpdate(f.serial); // Ablaufschacht-Stabilisierung (wirft nie)
+  }
   routeToApps(f.serial, buf);
 }
 
@@ -1180,6 +1190,20 @@ const webServer = http.createServer(async (req, res) => {
         return webSendJson(res, { capture: captureOn });
       }
       return webSendJson(res, { capture: captureOn, frames: captureBuffer.slice() });
+    }
+    if (u.pathname === '/api/autolevel') {
+      // Ablaufschacht-Stabilisierung: Status + History lesen, Config ändern.
+      // Änderungen wirken sofort (kein Neustart nötig).
+      if (req.method === 'GET') return webSendJson(res, autolevel.payload());
+      if (req.method === 'POST') {
+        const body = JSON.parse(await webReadBody(req) || '{}');
+        // knownFamily: Serial muss ein bekanntes Gerät der erwarteten Familie sein
+        const knownFamily = (serial) => (deviceMeta.has(serial) ? metaFor(serial).family : null);
+        const patch = autolevel.validateSubset(body, knownFamily);
+        const config = autolevel.applyConfig(patch);
+        log(`  [webui] autolevel-Config aktualisiert (enabled=${config.enabled})`);
+        return webSendJson(res, { ok: true, config });
+      }
     }
     if (u.pathname === '/api/program') {
       // Flare-Lichtprogramm (24h-Kurven): serverseitig in programs/<serial>.json.

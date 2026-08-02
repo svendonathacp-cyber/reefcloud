@@ -27,3 +27,6 @@ programs/
 # Geräte-Spitznamen (Laufzeitdaten)
 names.json
 device-ips.json
+
+# Ablaufschacht-Stabilisierung (Laufzeitdaten)
+autolevel.json

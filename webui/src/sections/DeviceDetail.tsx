@@ -8,6 +8,7 @@ import {
   BasepumpBody, deviceDisplayName, FlareBody, FAMILY_META, GenericBody, RollerBody, WaveBody, WAVE_MODE_KEYS,
 } from './DeviceCard';
 import { StatusDot, StatusLabel, statusOf } from './DeviceTile';
+import AutolevelSection from './AutolevelSection';
 import FlareProgramEditor from './FlareProgramEditor';
 import { useT } from '@/i18n/I18nContext';
 import type { CommandFn, DeviceSnapshot, SetNicknameFn } from '@/types/reef';
@@ -161,13 +162,14 @@ function NicknameEditor({ dev, setNickname }: { dev: DeviceSnapshot; setNickname
 
 interface Props {
   dev: DeviceSnapshot;
+  devices: DeviceSnapshot[]; // alle Geräte (Sensor-Auswahl der Autolevel-Sektion)
   now: number;
   sendCommand: CommandFn;
   setNickname: SetNicknameFn;
 }
 
 // Geräte-Detailseite im Stil der Reef-Factory-Einstellungsseiten
-export default function DeviceDetail({ dev, now, sendCommand, setNickname }: Props) {
+export default function DeviceDetail({ dev, devices, now, sendCommand, setNickname }: Props) {
   const t = useT();
   const meta = FAMILY_META[dev.family] ?? FAMILY_META.unknown;
   const { Icon } = meta;
@@ -203,7 +205,12 @@ export default function DeviceDetail({ dev, now, sendCommand, setNickname }: Pro
 
       <Card className="border-border bg-card/80 shadow-sm">
         <CardContent className="pt-5">
-          {dev.family === 'basepump' && <BasepumpBody dev={dev} sendCommand={sendCommand} />}
+          {dev.family === 'basepump' && (
+            <>
+              <BasepumpBody dev={dev} sendCommand={sendCommand} />
+              <AutolevelSection dev={dev} devices={devices} />
+            </>
+          )}
           {dev.family === 'wave' && <WaveBody dev={dev} sendCommand={sendCommand} />}
           {dev.family === 'roller' && <RollerBody dev={dev} sendCommand={sendCommand} />}
           {dev.family === 'flare' && (
