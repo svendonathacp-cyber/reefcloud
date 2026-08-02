@@ -1,6 +1,7 @@
 import { ChevronDown, LayoutDashboard, ScrollText } from 'lucide-react';
 import { FAMILY_META } from './DeviceCard';
 import type { DeviceSnapshot } from '@/types/reef';
+import logoUrl from '@/assets/logo.svg';
 
 interface Props {
   tank: string | null;
@@ -35,10 +36,10 @@ export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-[#f6f9fb]">
       <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
-        <img src="/logo.svg" alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
+        <img src={logoUrl} alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
         <div className="leading-tight">
           <span className="bg-gradient-to-r from-[#009deb] to-[#17c3d6] bg-clip-text text-lg font-bold text-transparent">
-            reefcloud
+            reef-cloud
           </span>
           <p className="text-[11px] text-muted-foreground">Lokale Reef-Factory-Cloud</p>
         </div>
