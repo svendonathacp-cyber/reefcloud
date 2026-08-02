@@ -1,5 +1,6 @@
 import { ChevronDown, LayoutDashboard, ScrollText } from 'lucide-react';
 import { FAMILY_META } from './DeviceCard';
+import { useT } from '@/i18n/I18nContext';
 import type { DeviceSnapshot } from '@/types/reef';
 import logoUrl from '@/assets/logo.svg';
 
@@ -33,6 +34,7 @@ function NavRow({ id, selected, onSelect, Icon, label, online }: {
 
 // Linke Seitenleiste im Stil der Reef-Factory-Web-Cloud
 export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
+  const t = useT();
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-[#f6f9fb]">
       <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
@@ -41,24 +43,24 @@ export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
           <span className="bg-gradient-to-r from-[#009deb] to-[#17c3d6] bg-clip-text text-lg font-bold text-transparent">
             reef-cloud
           </span>
-          <p className="text-[11px] text-muted-foreground">Lokale Reef-Factory-Cloud</p>
+          <p className="text-[11px] text-muted-foreground">{t('app.subtitle')}</p>
         </div>
       </div>
 
       <div className="px-3 pb-1 pt-2">
-        <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Aquarienliste</p>
+        <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('nav.tankList')}</p>
         <button className="flex w-full items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium shadow-sm">
-          <span className="min-w-0 flex-1 truncate text-left">{tank ?? 'Aquarium'}</span>
+          <span className="min-w-0 flex-1 truncate text-left">{tank ?? t('nav.tank')}</span>
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </button>
       </div>
 
       <nav className="space-y-0.5 px-3 pt-2">
-        <NavRow id="dashboard" selected={selected} onSelect={onSelect} Icon={LayoutDashboard} label="Dashboard" />
-        <NavRow id="log" selected={selected} onSelect={onSelect} Icon={ScrollText} label="Protokoll" />
+        <NavRow id="dashboard" selected={selected} onSelect={onSelect} Icon={LayoutDashboard} label={t('nav.dashboard')} />
+        <NavRow id="log" selected={selected} onSelect={onSelect} Icon={ScrollText} label={t('nav.log')} />
       </nav>
 
-      <p className="px-4 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Geräte</p>
+      <p className="px-4 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('nav.devices')}</p>
       <div className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4">
         {devices.map((d) => {
           const meta = FAMILY_META[d.family] ?? FAMILY_META.unknown;
@@ -69,7 +71,7 @@ export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
               selected={selected}
               onSelect={onSelect}
               Icon={meta.Icon}
-              label={d.name ?? meta.name}
+              label={d.name ?? t(meta.nameKey)}
               online={d.online}
             />
           );
