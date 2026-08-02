@@ -564,13 +564,23 @@ function updateState(serial, cls, method, payloadBuf) {
           : 'unknown';
       altParsed = { [`sensor${idx}`]: state, [`sensor${idx}Code`]: code };
     } else if (cls === 'tcRefresh' && method === 'settings' && pl.length >= 4) {
-      // u32BE @0; >= 1000 → temperatureC = raw/1000 (25400 = 25,4 °C, gegen Display
-      // kalibriert). Live-Frame 01.08.: 29 B — danach Sollwerte/Hysterese
-      // (23000/24000/27000/26000 erkennbar), Layout noch nicht final → vorerst nur Temp.
+      // Kurz-Layout (4 B): u32BE @0; >= 1000 → temperatureC = raw/1000
+      // (25400 = 25,4 °C, gegen Display kalibriert).
       const raw = pl.readUInt32BE(0);
-      altParsed = raw >= 1000
-        ? { temperatureC: Math.round(raw / 10) / 100 }
-        : { thermoRaw: raw };
+      if (pl.length === 29) {
+        // Lang-Layout (29 B, Live-Frames 01./02.08.): fünf Temperaturen als
+        // u16BE/1000 an den Offsets 2/7/11/16/20 (25,5 / 23,0 / 24,0 / 27,0 /
+        // 26,0 °C live verifiziert). Wert 1 = Ist-Temperatur, die anderen vier
+        // sind mit hoher Wahrscheinlichkeit Soll-/Grenzwerte (Heizen/Kühlen/
+        // Alarm) — Zuordnung NICHT verifiziert → neutral sp1..sp4. Tail: 7 B
+        // Roh (u. a. 0x81 + fffffd44 = -700, Kalibrier-Offset? — unbestätigt).
+        const v = [2, 7, 11, 16, 20].map((o) => pl.readUInt16BE(o) / 1000);
+        altParsed = { temperatureC: Math.round(v[0] * 100) / 100, setpoints: v.slice(1), tail: pl.slice(22).toString('hex') };
+      } else {
+        altParsed = raw >= 1000
+          ? { temperatureC: Math.round(raw / 10) / 100 }
+          : { thermoRaw: raw };
+      }
     } else if (cls === 'sgRefresh' && method === 'settings' && pl.length === 4) {
       // u32BE / 100 → °C (0x0000088b = 21,87 °C). 51-B-Variante: nicht kalibriert → ignorieren.
       altParsed = { temperatureC: pl.readUInt32BE(0) / 100 };
@@ -796,9 +806,25 @@ function routeToApps(serial, buf) {
 }
 
 // ---------- Geräte-Seite (Port 444) ----------
+// Log-Drossel für periodische Push-Klassen (Refresh/Report): Manche Geräte
+// (v. a. Thermo control, tcRefresh/settings alle 1–2 s) fluten das Log.
+// State-Updates und Capture laufen weiter pro Frame — nur die Logzeile wird
+// auf 1×/60 s pro Gerät+Klasse begrenzt, mit Zähler der übersprungenen Frames.
+const logThrottle = new Map(); // key → { last, skipped }
+function throttledFrameLog(peer, f, size) {
+  const key = `${f.serial}|${f.cls}/${f.method}`;
+  const now = Date.now();
+  const t = logThrottle.get(key);
+  if (t && now - t.last < 60000) { t.skipped++; return; }
+  const extra = t && t.skipped ? ` (×${t.skipped + 1} seit letzter Logzeile)` : '';
+  logThrottle.set(key, { last: now, skipped: 0 });
+  log(`  [${peer}] << ${f.cls}/${f.method} serial="${f.serial}" extra="${f.extra}" (${size} B)${extra}`);
+}
+
 function handleDeviceFrame(ws, buf, peer) {
   const f = decodeFrame(buf);
-  log(`  [${peer}] << ${f.cls}/${f.method} serial="${f.serial}" extra="${f.extra}" (${buf.length} B)`);
+  if (/(Refresh|Report)\//.test(`${f.cls}/${f.method}`)) throttledFrameLog(peer, f, buf.length);
+  else log(`  [${peer}] << ${f.cls}/${f.method} serial="${f.serial}" extra="${f.extra}" (${buf.length} B)`);
   captureFrame(buf, 'in', ws.deviceIp);
 
   if (f.cls === 'geConnect' && f.method === 'login') {
