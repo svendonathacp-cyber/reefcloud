@@ -279,7 +279,7 @@ export default function DeviceCard({ dev, now, sendCommand }: Props) {
         {dev.family === 'flare' && <FlareBody dev={dev} />}
         {!['basepump', 'wave', 'roller', 'flare'].includes(dev.family) && <GenericBody dev={dev} />}
         <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-          <span>{dev.firmware ? `FW ${dev.firmware}` : 'FW —'} · {dev.ip || 'IP —'}</span>
+          <span>{dev.firmware ? t('detail.firmware', { v: dev.firmware }) : t('detail.firmwareUnknown')} · {dev.ip || t('detail.ipUnknown')}</span>
           <span className="flex items-center gap-1"><Activity className="h-3 w-3" /><Ago lastSeen={dev.lastSeen} now={now} /></span>
         </div>
       </CardContent>

@@ -153,7 +153,7 @@ export default function WaveScheduleEditor({ dev, sendCommand }: Props) {
       : [
           { key: 'minSpeed' as const, label: t('waveEditor.minPower'), value: selEntry.minSpeed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` },
           { key: 'maxSpeed' as const, label: t('waveEditor.maxPower'), value: selEntry.maxSpeed ?? 0, min: 0, max: 100, step: 1, fmt: (v: number) => `${v} %` },
-          { key: 'period' as const, label: t('waveEditor.frequency'), value: (selEntry.period ?? 10000) / 1000, min: 0.5, max: 20, step: 0.5, fmt: (v: number) => `${v.toFixed(1)} s` },
+          { key: 'period' as const, label: t('waveEditor.period'), value: (selEntry.period ?? 10000) / 1000, min: 0.5, max: 20, step: 0.5, fmt: (v: number) => `${v.toFixed(1)} s` },
         ]
     : [];
 

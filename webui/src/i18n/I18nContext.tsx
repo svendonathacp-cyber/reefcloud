@@ -14,21 +14,6 @@ function interpolate(s: string, params?: Params): string {
   return out;
 }
 
-// Gespeicherte Sprache ohne Hook-Kontext lesen (z. B. für nicht-reaktive Callbacks)
-export function storedLang(): Lang {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY);
-    return v === 'de' || v === 'en' ? v : 'de';
-  } catch {
-    return 'de';
-  }
-}
-
-// Übersetzung außerhalb von React-Komponenten (nutzt die persistierte Sprache)
-export function tStatic(key: MessageKey, params?: Params): string {
-  return interpolate(DICTS[storedLang()][key] ?? de[key], params);
-}
-
 export function localeOf(lang: Lang): string {
   return lang === 'de' ? 'de-DE' : 'en-GB';
 }

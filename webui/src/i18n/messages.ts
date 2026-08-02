@@ -132,7 +132,7 @@ export const de = {
   'waveEditor.power': 'Leistung',
   'waveEditor.minPower': 'Minimale Leistung',
   'waveEditor.maxPower': 'Maximale Leistung',
-  'waveEditor.frequency': 'Frequenz',
+  'waveEditor.period': 'Periode',
   'waveEditor.blockFrom': '{mode} ab {time}',
   'waveEditor.starts': 'Beginnt',
   'waveEditor.tapToEdit': 'Block antippen zum Bearbeiten — Modus, Startzeit und Parameter je Block.',
@@ -179,8 +179,8 @@ export const de = {
 export type MessageKey = keyof typeof de;
 
 export const en: Record<MessageKey, string> = {
-  'app.title': 'reef-cloud — Local Reef Factory cloud',
-  'app.subtitle': 'Local Reef Factory cloud',
+  'app.title': 'reef-cloud — Local Reef Factory Cloud',
+  'app.subtitle': 'Local Reef Factory Cloud',
 
   'lang.choose': 'Choose your language · Sprache wählen',
   'lang.switchTooltip': 'Switch language (English/Deutsch)',
@@ -257,7 +257,7 @@ export const en: Record<MessageKey, string> = {
   'roller.feed': 'Feed',
   'roller.feedMm': 'Feed {mm} mm',
   'roller.newRoll': 'New roll',
-  'roller.confirmNewRoll': 'Really teach in a new fleece roll?',
+  'roller.confirmNewRoll': 'Really register a new fleece roll?',
   'roller.modeOff': 'Mode off',
   'roller.modeAuto': 'Mode auto',
 
@@ -289,7 +289,7 @@ export const en: Record<MessageKey, string> = {
   'waveEditor.power': 'Power',
   'waveEditor.minPower': 'Minimum power',
   'waveEditor.maxPower': 'Maximum power',
-  'waveEditor.frequency': 'Frequency',
+  'waveEditor.period': 'Period',
   'waveEditor.blockFrom': '{mode} from {time}',
   'waveEditor.starts': 'Starts',
   'waveEditor.tapToEdit': 'Tap a block to edit — mode, start time and parameters per block.',

@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { tStatic, useT } from '@/i18n/I18nContext';
+import { useT } from '@/i18n/I18nContext';
 import type { MessageKey } from '@/i18n/messages';
 import type { FlareProgram } from '@/types/reef';
 
@@ -42,7 +42,7 @@ interface Props {
 // Werte pro Kanal am ausgewählten Punkt einstellen, Gesamtintensität regeln.
 export default function FlareProgramEditor({ serial }: Props) {
   const t = useT();
-  const [program, setProgram] = useState<FlareProgram>(() => defaultProgram(tStatic('flareEditor.defaultName')));
+  const [program, setProgram] = useState<FlareProgram>(() => defaultProgram(t('flareEditor.defaultName')));
   const [sel, setSel] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -50,13 +50,19 @@ export default function FlareProgramEditor({ serial }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ idx: number; ch: number } | null>(null);
 
+  // t ueber Ref verwenden: load() soll NICHT bei Sprachwechsel erneut laufen,
+  // sonst gingen ungespeicherte Aenderungen verloren. tRef.current zeigt aber
+  // immer auf das aktuelle t (inkl. ?lang=-Override und First-Run-State).
+  const tRef = useRef(t);
+  tRef.current = t;
+
   const load = useCallback(async () => {
     try {
       const r = await fetch(`/api/program?serial=${encodeURIComponent(serial)}`);
       const j = await r.json();
-      setProgram(j.program ?? defaultProgram(tStatic('flareEditor.defaultName')));
+      setProgram(j.program ?? defaultProgram(tRef.current('flareEditor.defaultName')));
     } catch {
-      setProgram(defaultProgram(tStatic('flareEditor.defaultName')));
+      setProgram(defaultProgram(tRef.current('flareEditor.defaultName')));
     } finally {
       setLoaded(true);
       setDirty(false);
