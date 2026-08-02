@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, Gauge, History, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Gauge, History, Minus, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -47,6 +46,34 @@ function coveredColor(c: CoveredState, role: 'high' | 'low'): string {
 
 function reasonKey(r: AutolevelReason): 'autolevel.reason.tooFull' | 'autolevel.reason.tooEmpty' | 'autolevel.reason.staleData' {
   return r === 'tooFull' ? 'autolevel.reason.tooFull' : r === 'tooEmpty' ? 'autolevel.reason.tooEmpty' : 'autolevel.reason.staleData';
+}
+
+// Zahlenfeld mit gestylten Stepper-Buttons (Minus/Plus) — die Browser-
+// Default-Spinner von type=number sehen im Dark-Theme altbacken aus.
+// Tippen bleibt möglich; die Buttons klemmen auf min/max.
+function StepperInput({ value, onChange, min, max, disabled }: {
+  value: string; onChange: (v: string) => void; min: number; max: number; disabled?: boolean;
+}) {
+  const step = (d: number) => {
+    const n = Number(value);
+    onChange(String(Math.min(max, Math.max(min, (Number.isFinite(n) ? n : min) + d))));
+  };
+  const btn = 'flex w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40';
+  return (
+    <div className="flex h-8 items-stretch overflow-hidden rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring">
+      <button type="button" aria-label="−" className={btn} disabled={disabled} onClick={() => step(-1)}>
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <input
+        type="number" min={min} max={max} value={value} disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full min-w-0 border-0 bg-transparent text-center text-sm outline-none [appearance:textfield] disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <button type="button" aria-label="+" className={btn} disabled={disabled} onClick={() => step(1)}>
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 }
 
 interface Props {
@@ -345,19 +372,19 @@ export default function AutolevelSection({ dev, devices }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">{t('autolevel.stepPercent')}</Label>
-              <Input type="number" min={1} max={10} value={fStep} onChange={(e) => setFStep(e.target.value)} className="h-8" disabled={busy} />
+              <StepperInput min={1} max={10} value={fStep} onChange={setFStep} disabled={busy} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t('autolevel.cooldownS')}</Label>
-              <Input type="number" min={10} max={600} value={fCooldown} onChange={(e) => setFCooldown(e.target.value)} className="h-8" disabled={busy} />
+              <StepperInput min={10} max={600} value={fCooldown} onChange={setFCooldown} disabled={busy} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t('autolevel.minSpeed')}</Label>
-              <Input type="number" min={0} max={50} value={fMin} onChange={(e) => setFMin(e.target.value)} className="h-8" disabled={busy} />
+              <StepperInput min={0} max={50} value={fMin} onChange={setFMin} disabled={busy} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t('autolevel.maxSpeed')}</Label>
-              <Input type="number" min={50} max={100} value={fMax} onChange={(e) => setFMax(e.target.value)} className="h-8" disabled={busy} />
+              <StepperInput min={50} max={100} value={fMax} onChange={setFMax} disabled={busy} />
             </div>
           </div>
           <Button size="sm" className="w-full" disabled={busy} onClick={() => void saveAdvanced()}>
