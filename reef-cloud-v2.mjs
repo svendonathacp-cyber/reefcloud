@@ -281,6 +281,41 @@ function saveNames() {
   fs.renameSync(tmp, NAMES_FILE);
 }
 
+// ---------- Geräte-Eigenschaften (device props) ----------
+// Persistenz: device-props.json ({ "<serial>": { "alarmWhen": "above"|"below" } }).
+// Laufzeitdaten — steht in .gitignore. Schreiben atomar (Muster names.json).
+// alarmWhen steuert die Interpretation der Level-Sensor-Codes (RFLS): die
+// Alarm-Richtung („Alarm, wenn Flüssigkeit über/unter") ist am Gerät selbst
+// umkonfigurierbar — der Server muss sie daher pro Gerät kennen, um aus dem
+// rohen alarm-Flag den Wasserstand (covered) abzuleiten. Default: 'above'
+// (Werkskonfiguration der Geräte, live verifiziert 02.08.).
+const PROPS_FILE = path.join(__dirname, 'device-props.json');
+const deviceProps = new Map();
+try {
+  for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(PROPS_FILE, 'utf8')))) {
+    if (v && (v.alarmWhen === 'above' || v.alarmWhen === 'below')) deviceProps.set(k, { alarmWhen: v.alarmWhen });
+  }
+  if (deviceProps.size) log(`Geräte-Props geladen: ${deviceProps.size} Einträge aus device-props.json`);
+} catch { /* Datei optional oder defekt → mit Defaults starten */ }
+
+function saveProps() {
+  const tmp = PROPS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(deviceProps), null, 2) + '\n');
+  fs.renameSync(tmp, PROPS_FILE);
+}
+
+function alarmWhenFor(serial) {
+  return deviceProps.get(serial)?.alarmWhen === 'below' ? 'below' : 'above';
+}
+
+// covered = Wasser bedeckt den Sensor (Pegel ÜBER der Sensorposition).
+// alarm ist die rohe Alarm-Bedeutung des gemeldeten Codes; die Ableitung
+// hängt von der geräteseitigen Alarm-Richtung ab (alarmWhen).
+function deriveCovered(alarm, alarmWhen) {
+  if (alarm !== true && alarm !== false) return 'unknown';
+  return alarmWhen === 'above' ? alarm : !alarm;
+}
+
 // ---------- Letzte bekannte Geräte-IPs persistieren ----------
 // Die Erreichbarkeits-Probe braucht eine IP — ohne Persistenz ist sie nach
 // einem Server-Neustart bis zum nächsten Geräte-Login blind (02.08.: Altgeräte
@@ -383,6 +418,7 @@ function snapshot(serial) {
     // trivialerweise erreichbar — sonst widersprüchlich (online:true, reachable:false).
     reachable: online ? true : (m.reachable ?? false),
     lastProbe: m.lastProbe ?? 0,
+    ...(m.family === 'levelSensor' ? { alarmWhen: alarmWhenFor(serial) } : {}),
     ...(m.lampProgram ? { lampProgram: m.lampProgram } : {}),
   };
 }
@@ -554,16 +590,33 @@ function updateState(serial, cls, method, payloadBuf) {
   let altParsed = null;
   {
     const pl = payloadBuf;
+    if (cls === 'lsRefresh' && method === 'alert') {
+      // 1 Byte: unterer Sensor 0x01, oberer 0x02 (= Index+1, vermutlich die
+      // Sensor-Nummer). Bedeutung unklar (Live-Verifikation 02.08.) → kein
+      // State daraus ableiten, still akzeptieren. Das Frame-Log ist für
+      // Refresh-Klassen bereits gedrosselt.
+      return;
+    }
     if (cls === 'lsRefresh' && method === 'data' && pl.length >= 3) {
-      // [sensorIndex][code][res] — Sensor 0=unten: 0x03 ok, 0x00 Alarm niedrig;
-      // Sensor 1=oben: 0x02 ok, 0x03 Alarm hoch
+      // [index][code][0x00] — Codes live an Svens Geräten verifiziert (02.08.):
+      //   Index 0 (unterer Sensor, „Tief"):  0x00 = Alarm, 0x03 = ok
+      //   Index 1 (oberer Sensor, „Hoch"):   0x03 = Alarm, 0x02 = ok
+      // Beide Geräte sind werkseitig auf „Alarm, wenn Flüssigkeit ÜBER"
+      // konfiguriert, d. h. Alarm-Code = Sensor bedeckt (Wasser ÜBER dem
+      // Sensor), ok-Code = nicht bedeckt. Die Richtung ist am Gerät
+      // umkonfigurierbar → covered wird über alarmWhen (device-props.json)
+      // pro Gerät abgeleitet. Unbekannte Codes: alarm/covered = 'unknown',
+      // Roh-Code bleibt erhalten.
       const idx = pl[0], code = pl[1];
-      const state = idx === 0
-        ? (code === 0x03 ? 'ok' : code === 0x00 ? 'alarmLow' : 'unknown')
+      const alarm = idx === 0
+        ? (code === 0x00 ? true : code === 0x03 ? false : 'unknown')
         : idx === 1
-          ? (code === 0x02 ? 'ok' : code === 0x03 ? 'alarmHigh' : 'unknown')
+          ? (code === 0x03 ? true : code === 0x02 ? false : 'unknown')
           : 'unknown';
-      altParsed = { [`sensor${idx}`]: state, [`sensor${idx}Code`]: code };
+      // Frische-Stempel NUR für echte Datenframes — das Autolevel-Frische-Gate
+      // darf sich nicht auf lsRefresh/alert o. ä. stützen.
+      m.lastLsDataTs = Date.now();
+      altParsed = { sensorIndex: idx, code, alarm, covered: deriveCovered(alarm, alarmWhenFor(serial)) };
     } else if (cls === 'tcRefresh' && method === 'settings' && pl.length >= 4) {
       // Kurz-Layout (4 B): u32BE @0; >= 1000 → temperatureC = raw/1000
       // (25400 = 25,4 °C, gegen Display kalibriert).
@@ -932,6 +985,10 @@ function handleDeviceFrame(ws, buf, peer) {
   }
   // Alles andere vom Gerät: State fürs Tunnel-Snapshot pflegen + an abonnierende Apps weiterreichen
   if (f.serial && f.serial !== '0000000000000000') {
+    // „zuletzt gesehen" bei JEDEM Geräte-Frame frisch halten — nicht nur beim
+    // Login (updateState stempelt ebenfalls; hier explizit, damit es auch für
+    // Frame-Arten gilt, die den State-Pfad nicht durchlaufen).
+    metaFor(f.serial).lastSeen = Date.now();
     updateState(f.serial, f.cls, f.method, f.payload);
     autolevel.onStateUpdate(f.serial); // Ablaufschacht-Stabilisierung (wirft nie)
   }
@@ -1078,6 +1135,7 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 // Endpunkte:
 //   GET  /api/devices  → { devices: [deviceSnapshot…], now }      (alle bekannten, auch offline)
 //   POST /api/devices/name { serial, name } → Spitzname setzen/ändern (leer = löschen)
+//   POST /api/devices/props { serial, alarmWhen } → Level-Sensor: Alarm-Richtung 'above'|'below'
 //   GET  /api/settings → Tunnel-Einstellungen (ohne Token)
 //   POST /api/settings { tunnelUrl?, tunnelToken?, tunnelType?, tunnelLabel? } → speichern + Tunnel neu starten
 //   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
@@ -1234,6 +1292,27 @@ const webServer = http.createServer(async (req, res) => {
       log(`  [webui] Nickname ${serial} → ${name ? `"${name}"` : '(gelöscht)'}`);
       announce(serial, true); // geänderten Snapshot sofort an Tunnel melden
       return webSendJson(res, { ok: true, serial, customName: name || null });
+    }
+    if (u.pathname === '/api/devices/props' && req.method === 'POST') {
+      // Geräte-Eigenschaften setzen (aktuell: alarmWhen für Level-Sensoren —
+      // geräteseitige Alarm-Richtung „Flüssigkeit über/unter"). Wirkt sofort:
+      // covered wird aus dem letzten alarm-Stand neu abgeleitet.
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const serial = String(body.serial || '').trim();
+      if (!serial) throw new Error('serial fehlt');
+      if (!/^[\w-]{1,32}$/.test(serial)) throw new Error('serial ungültig (1–32 Zeichen: Buchstaben, Ziffern, _, -)');
+      if (body.alarmWhen !== 'above' && body.alarmWhen !== 'below') {
+        throw new Error("alarmWhen muss 'above' oder 'below' sein");
+      }
+      deviceProps.set(serial, { alarmWhen: body.alarmWhen });
+      saveProps(); // sofort atomar persistieren
+      const m = metaFor(serial);
+      if (m.state && (m.state.alarm === true || m.state.alarm === false || m.state.alarm === 'unknown')) {
+        m.state = { ...m.state, covered: deriveCovered(m.state.alarm, body.alarmWhen) };
+      }
+      log(`  [webui] Props ${serial} → alarmWhen=${body.alarmWhen}`);
+      announce(serial, true);
+      return webSendJson(res, { ok: true, serial, alarmWhen: body.alarmWhen });
     }
     if (u.pathname === '/api/capture') {
       if (req.method === 'POST') {
