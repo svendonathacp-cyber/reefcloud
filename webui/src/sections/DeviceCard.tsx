@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
+import { StepperInput } from '@/components/ui/stepper-input';
 import { toast } from 'sonner';
 import {
   Beaker, Cpu, Droplets, FlaskConical, Gauge, Lightbulb,
@@ -187,8 +187,8 @@ function RollerBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Co
         </Button>
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <Input type="number" min={1} max={500} value={mm} disabled={!dev.online}
-          onChange={(e) => setMm(Number(e.target.value))} className="w-20" />
+        <StepperInput min={1} max={500} value={String(mm)} disabled={!dev.online}
+          onChange={(v) => setMm(Math.max(0, Number(v) || 0))} className="w-28" />
         <Button size="sm" variant="secondary" disabled={!dev.online || busy !== null}
           onClick={() => run('feed', { mm }, t('roller.feedMm', { mm }))}>
           {busy === 'feed' ? '…' : t('roller.feed')}
