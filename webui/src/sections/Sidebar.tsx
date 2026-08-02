@@ -2,16 +2,6 @@ import { ChevronDown, LayoutDashboard, ScrollText } from 'lucide-react';
 import { FAMILY_META } from './DeviceCard';
 import type { DeviceSnapshot } from '@/types/reef';
 
-function CubeLogo({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" strokeWidth="1.7" strokeLinejoin="round">
-      <path d="M20 4 34 12 20 20 6 12Z" stroke="#f5a623" />
-      <path d="M6 12 20 20 20 36 6 28Z" stroke="#3ecf6e" />
-      <path d="M34 12 20 20 20 36 34 28Z" stroke="#009deb" />
-    </svg>
-  );
-}
-
 interface Props {
   tank: string | null;
   devices: DeviceSnapshot[];
@@ -45,7 +35,7 @@ export default function Sidebar({ tank, devices, selected, onSelect }: Props) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-[#f6f9fb]">
       <div className="flex items-center gap-2.5 px-4 pb-2 pt-4">
-        <CubeLogo />
+        <img src="/logo.svg" alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
         <div className="leading-tight">
           <span className="bg-gradient-to-r from-[#009deb] to-[#17c3d6] bg-clip-text text-lg font-bold text-transparent">
             reefcloud

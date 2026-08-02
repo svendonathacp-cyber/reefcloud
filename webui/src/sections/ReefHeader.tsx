@@ -20,6 +20,7 @@ export default function ReefHeader({ title, tunnel, online, total, captureOn, on
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-white/85 backdrop-blur">
       <div className="flex items-center gap-3 px-4 py-2.5">
+        <img src="/logo.svg" alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
         <h1 className="truncate text-sm font-semibold">{title}</h1>
         <div className="ml-auto flex items-center gap-3 sm:gap-4">
           <TooltipProvider>
