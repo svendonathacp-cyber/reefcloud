@@ -23,14 +23,14 @@ export default function ReefHeader({ title, tunnel, online, total, captureOn, on
   const hostParam = { host: tunnelHost ? ` (${tunnelHost})` : '' };
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-[#0b1220]/85 backdrop-blur">
-      <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
         <img src={logoUrl} alt="reef-cloud Logo" className="h-7 w-7 shrink-0" />
-        <h1 className="truncate text-sm font-semibold">{title}</h1>
-        <div className="ml-auto flex items-center gap-3 sm:gap-4">
+        <h1 className="min-w-0 truncate text-sm font-semibold">{title}</h1>
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-4">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                <span className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium sm:px-2.5 ${
                   tunnel.connected ? 'bg-emerald-400/10 text-emerald-400' : 'bg-amber-400/10 text-amber-400'
                 }`}>
                   {tunnel.connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
@@ -42,13 +42,14 @@ export default function ReefHeader({ title, tunnel, online, total, captureOn, on
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <Badge variant={online > 0 ? 'default' : 'secondary'} className="gap-1.5">
+          <Badge variant={online > 0 ? 'default' : 'secondary'} className="gap-1.5 px-2 sm:px-2.5">
             <span className={`inline-block h-2 w-2 rounded-full ${online > 0 ? 'bg-emerald-300' : 'bg-muted-foreground'}`} />
-            {t('header.online', { online, total })}
+            <span className="sm:hidden">{online}/{total}</span>
+            <span className="hidden sm:inline">{t('header.online', { online, total })}</span>
           </Badge>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <Switch id="capture" checked={captureOn} onCheckedChange={onCaptureChange} />
-            <Label htmlFor="capture" className="text-xs text-muted-foreground">{t('header.capture')}</Label>
+            <Label htmlFor="capture" className="hidden text-xs text-muted-foreground sm:inline">{t('header.capture')}</Label>
           </div>
           <TooltipProvider>
             <Tooltip>

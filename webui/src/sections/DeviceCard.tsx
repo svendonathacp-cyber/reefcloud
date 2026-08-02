@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import {
-  Activity, Beaker, Cpu, Droplets, FlaskConical, Gauge, Lightbulb,
+  Beaker, Cpu, Droplets, FlaskConical, Gauge, Lightbulb,
   Plug, Ruler, Scroll, Thermometer, Waves, type LucideIcon,
 } from 'lucide-react';
 import WaveScheduleEditor from './WaveScheduleEditor';
@@ -251,45 +250,6 @@ function GenericBody({ dev }: { dev: DeviceSnapshot }) {
       {rows.slice(0, 8).map(([k, v]) => <Stat key={k} label={k} value={v} />)}
       {rows.length > 8 && <p className="text-xs text-muted-foreground">{t('generic.moreValues', { n: rows.length - 8 })}</p>}
     </div>
-  );
-}
-
-// ---------- Karten-Shell ----------
-
-interface Props {
-  dev: DeviceSnapshot;
-  now: number;
-  sendCommand: CommandFn;
-}
-
-export default function DeviceCard({ dev, now, sendCommand }: Props) {
-  const t = useT();
-  const meta = FAMILY_META[dev.family] ?? FAMILY_META.unknown;
-  const { Icon } = meta;
-  return (
-    <Card className={`border-border/70 bg-card/80 shadow-lg shadow-black/20 transition-opacity ${dev.online ? '' : 'opacity-55'}`}>
-      <CardHeader className="flex-row items-center gap-3 space-y-0 pb-3">
-        <div className="rounded-lg bg-gradient-to-br from-[#009deb]/25 to-[#17c3d6]/25 p-2">
-          <Icon className="h-5 w-5 text-[#17c3d6]" />
-        </div>
-        <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate font-semibold">{dev.name ?? t(meta.nameKey)}</p>
-          <p className="truncate font-mono text-xs text-muted-foreground">{dev.serial}</p>
-        </div>
-        <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dev.online ? 'bg-emerald-400 shadow-[0_0_8px_2px_rgba(52,211,153,0.5)]' : 'bg-muted-foreground/50'}`} />
-      </CardHeader>
-      <CardContent>
-        {dev.family === 'basepump' && <BasepumpBody dev={dev} sendCommand={sendCommand} />}
-        {dev.family === 'wave' && <WaveBody dev={dev} sendCommand={sendCommand} />}
-        {dev.family === 'roller' && <RollerBody dev={dev} sendCommand={sendCommand} />}
-        {dev.family === 'flare' && <FlareBody dev={dev} />}
-        {!['basepump', 'wave', 'roller', 'flare'].includes(dev.family) && <GenericBody dev={dev} />}
-        <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-          <span>{dev.firmware ? t('detail.firmware', { v: dev.firmware }) : t('detail.firmwareUnknown')} · {dev.ip || t('detail.ipUnknown')}</span>
-          <span className="flex items-center gap-1"><Activity className="h-3 w-3" /><Ago lastSeen={dev.lastSeen} now={now} /></span>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

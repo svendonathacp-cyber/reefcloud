@@ -6,7 +6,6 @@ import type { CaptureFrame, DeviceSnapshot } from '@/types/reef';
 export function useReef(pollMs = 4000) {
   const [devices, setDevices] = useState<DeviceSnapshot[]>([]);
   const [now, setNow] = useState<number>(Date.now());
-  const [tank, setTank] = useState<string | null>(null);
   const [tunnel, setTunnel] = useState<{ connected: boolean; url?: string }>({ connected: false });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true); // bis zur ersten (erfolglosen oder erfolgreichen) Antwort
@@ -20,7 +19,6 @@ export function useReef(pollMs = 4000) {
       const j = await r.json();
       setDevices(j.devices ?? []);
       setNow(j.now ?? Date.now());
-      setTank(j.tank ?? null);
       setTunnel(j.tunnel ?? { connected: false });
       setError(null);
     } catch (e) {
@@ -88,5 +86,5 @@ export function useReef(pollMs = 4000) {
     setTimeout(loadDevices, 600); // Server-Stand zeitnah nachladen
   }, [loadDevices]);
 
-  return { devices, now, tank, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname };
+  return { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname };
 }

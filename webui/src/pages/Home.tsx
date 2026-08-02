@@ -65,9 +65,12 @@ export default function Home() {
   const online = devices.filter((d) => d.online).length;
   const currentDev = devices.find((d) => d.serial === selected);
 
-  const title = selected === 'dashboard'
+  // Unbekannte Serial (z. B. veralteter ?dev=-Deep-Link) → aufs Dashboard zurückfallen
+  const view = selected === 'log' || currentDev ? selected : 'dashboard';
+
+  const title = view === 'dashboard'
     ? t('nav.dashboard')
-    : selected === 'log'
+    : view === 'log'
       ? t('home.logMonitor')
       : (currentDev ? deviceDisplayName(currentDev) || t('family.unknown') : t('family.unknown'));
 
@@ -78,6 +81,7 @@ export default function Home() {
   const rest = sorted.filter((d) => !GROUP_KEYS.some((g) => (g.families as readonly string[]).includes(d.family)));
 
   const openDetail = (serial: string) => {
+    if (!devices.some((d) => d.serial === serial)) return; // nur bekannte Serials
     setSelected(serial);
     window.scrollTo({ top: 0 });
   };
@@ -114,7 +118,7 @@ export default function Home() {
             </div>
           )}
 
-          {selected === 'dashboard' && (
+          {view === 'dashboard' && (
             <>
               {loading && devices.length === 0 && !error && (
                 <>
@@ -146,8 +150,8 @@ export default function Home() {
             </>
           )}
 
-          {selected === 'log' && <LogView frames={frames} captureOn={captureOn} />}
-          {currentDev && <DeviceDetail dev={currentDev} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
+          {view === 'log' && <LogView frames={frames} captureOn={captureOn} />}
+          {view !== 'dashboard' && view !== 'log' && currentDev && <DeviceDetail dev={currentDev} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
         </main>
       </div>
     </div>

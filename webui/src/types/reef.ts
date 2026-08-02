@@ -16,7 +16,6 @@ export interface DeviceSnapshot {
 export interface DevicesResponse {
   devices: DeviceSnapshot[];
   now: number;
-  tank?: string | null;
   tunnel?: { connected: boolean; url?: string };
 }
 
