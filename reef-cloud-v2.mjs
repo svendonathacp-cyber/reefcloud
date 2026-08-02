@@ -636,14 +636,14 @@ function updateState(serial, cls, method, payloadBuf) {
     if (cls === 'lsRefresh' && method === 'data' && pl.length >= 3) {
       // [index][code][0x00] — Codes live an Svens Geräten verifiziert (02.08.):
       //   Index 0 (unterer Sensor, „Tief"):  0x00 = Alarm, 0x03 = ok
-      //   Index 1 (oberer Sensor, „Hoch"):   0x02 = Alarm, 0x03 = ok
+      //   Index 1 (oberer Sensor, „Hoch"):   0x02 = Alarm, 0x03 = ok, 0x00 = ok
       // Belege: Tief rausgehoben → 0x03 (trocken); Hoch zeigte auf der
       // Onboard-Seite rot „über" (= Alarm aktiv) bei gleichzeitig 0x02 auf
-      // der Leitung, frisch per Join-Refresh erzwungen. Symmetrie: 0x03 ist
-      // bei BEIDEN Sensoren „kein Wasser", die Bedeckt-Codes unterscheiden
-      // sich (0x00 tief / 0x02 hoch). Die alte Bridge-Notiz (0x02 = ok bei
-      // Index 1) war invertiert — das erzeugte Fehlalarme „oben", obwohl
-      // das Wasser unter dem Sensor stand.
+      // der Leitung, frisch per Join-Refresh erzwungen. Hoch komplett aus
+      // dem Wasser → 0x00 bei Onboard „O.K." (kein Alarm) — vermutlich
+      // „stabil trocken", während 0x03 den Übergang/frisch trocken meldet.
+      // Die alte Bridge-Notiz (0x02 = ok bei Index 1) war invertiert —
+      // das erzeugte Fehlalarme „oben", obwohl das Wasser unter dem Sensor stand.
       // Beide Geräte sind werkseitig auf „Alarm, wenn Flüssigkeit ÜBER"
       // konfiguriert, d. h. Alarm-Code = Sensor bedeckt (Wasser ÜBER dem
       // Sensor), ok-Code = nicht bedeckt. Die Richtung ist am Gerät
@@ -654,7 +654,7 @@ function updateState(serial, cls, method, payloadBuf) {
       const alarm = idx === 0
         ? (code === 0x00 ? true : code === 0x03 ? false : 'unknown')
         : idx === 1
-          ? (code === 0x02 ? true : code === 0x03 ? false : 'unknown')
+          ? (code === 0x02 ? true : (code === 0x03 || code === 0x00) ? false : 'unknown')
           : 'unknown';
       // Frische-Stempel NUR für echte Datenframes — das Autolevel-Frische-Gate
       // darf sich nicht auf lsRefresh/alert o. ä. stützen.
