@@ -43,6 +43,9 @@ function run(cmd, args) {
 
 // Best-Effort-Dekodierung: erst striktes UTF-8, sonst windows-1252
 // (netsh auf deutschem Windows liefert typischerweise CP850/CP1252-Bytes).
+// Bekannte Limitation: CP850 ≠ CP1252 — Umlaute in SSIDs können auf
+// CP850-Konsolen trotz Fallback verstümmelt dargestellt werden (nur ein
+// Anzeigeproblem, die Scan-Funktion selbst ist davon nicht betroffen).
 export function decodeOutput(buf) {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(buf);
@@ -134,9 +137,9 @@ function dedupe(networks) {
 export async function scanWifiNetworks() {
   if (process.platform === 'win32') {
     const buf = await run('netsh', ['wlan', 'show', 'networks', 'mode=bssid']);
-    const networks = dedupe(parseNetsh(decodeOutput(buf)));
-    if (!networks.length) throw new Error('Keine WLAN-Netze gefunden — hat der Server einen WLAN-Adapter?');
-    return networks;
+    // 0 Netze ist KEIN Fehler (symmetrisch zu Linux) — ein Scan ohne Treffer
+    // ist ein gültiges Ergebnis; Fehler nur bei Tool-/Adapter-Problemen.
+    return dedupe(parseNetsh(decodeOutput(buf)));
   }
   if (process.platform === 'linux') {
     try {

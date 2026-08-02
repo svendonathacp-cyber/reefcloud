@@ -337,7 +337,6 @@ export const de = {
   'onboarding.configure.urls': 'Bekannte Adressen: Thermo Control ist über https://www.thermocontrol.io/ erreichbar (DNS-Catch-all des Geräts), ESP-typisch auch http://192.168.4.1.',
   'onboarding.configure.serverField': 'Hat die Geräte-Oberfläche ein Server-/Cloud-Feld, trage die Adresse dieses reef-cloud-Servers ein:',
   'onboarding.configure.serverHint': 'LAN-Adressen des Servers — Geräte-Ports: 443/444 (TLS), Altgeräte 442/80 (Details: Einstellungen → Anleitungen → DNS-Rewrite).',
-  'onboarding.configure.serverLoading': 'Server-Adressen werden geladen …',
   'onboarding.configure.serverUnknown': 'Server-Adressen konnten nicht geladen werden — zu finden unter Einstellungen → Server.',
   'onboarding.search.body': 'Wechsle mit Handy/Laptop zurück ins Heim-WLAN und tippe dann auf „Gerät suchen“. Der Assistent wartet, bis sich das Gerät bei reef-cloud meldet.',
   'onboarding.search.start': 'Gerät suchen',
@@ -348,8 +347,16 @@ export const de = {
   'onboarding.search.stop': 'Suche beenden',
   'onboarding.success.relinked': 'Gerät verbunden — der bestehende Eintrag wurde wieder verknüpft.',
   'onboarding.success.new': 'Neues Gerät angemeldet.',
+  'onboarding.success.confirm': 'Gerät {serial} hat sich angemeldet — ist das dein Gerät?',
   'onboarding.success.openDevice': 'Gerät öffnen',
   'onboarding.success.backToDashboard': 'Zum Dashboard',
+
+  // Onboarding — SVG-Illustrationen
+  'onboarding.svg.homeWifi': 'Heimnetz',
+  'onboarding.svg.neighborWifi': 'Nachbar-WLAN',
+  'onboarding.svg.ssidLabel': 'SSID:',
+  'onboarding.svg.passwordLabel': 'Passwort:',
+  'onboarding.svg.yourServer': 'dein Server',
 } as const;
 
 export type MessageKey = keyof typeof de;
@@ -664,7 +671,6 @@ export const en: Record<MessageKey, string> = {
   'onboarding.configure.urls': 'Known addresses: Thermo Control is reachable via https://www.thermocontrol.io/ (DNS catch-all of the device); ESP-typical is also http://192.168.4.1.',
   'onboarding.configure.serverField': 'If the device interface has a server/cloud field, enter the address of this reef-cloud server:',
   'onboarding.configure.serverHint': 'LAN addresses of the server — device ports: 443/444 (TLS), legacy devices 442/80 (details: Settings → Guides → DNS rewrite).',
-  'onboarding.configure.serverLoading': 'Loading server addresses …',
   'onboarding.configure.serverUnknown': 'Server addresses could not be loaded — find them under Settings → Server.',
   'onboarding.search.body': 'Switch your phone/laptop back to your home Wi-Fi, then tap "Search for the device". The wizard waits until the device checks in with reef-cloud.',
   'onboarding.search.start': 'Search for the device',
@@ -675,6 +681,14 @@ export const en: Record<MessageKey, string> = {
   'onboarding.search.stop': 'Stop searching',
   'onboarding.success.relinked': 'Device connected — the existing entry was re-linked.',
   'onboarding.success.new': 'New device registered.',
+  'onboarding.success.confirm': 'Device {serial} checked in — is this your device?',
   'onboarding.success.openDevice': 'Open device',
   'onboarding.success.backToDashboard': 'Back to dashboard',
+
+  // Onboarding — SVG illustrations
+  'onboarding.svg.homeWifi': 'Home Wi-Fi',
+  'onboarding.svg.neighborWifi': 'Neighbor Wi-Fi',
+  'onboarding.svg.ssidLabel': 'SSID:',
+  'onboarding.svg.passwordLabel': 'Password:',
+  'onboarding.svg.yourServer': 'your server',
 };

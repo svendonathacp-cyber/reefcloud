@@ -58,7 +58,7 @@ export default function Home() {
   const { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname } = useReef();
   const [selected, setSelected] = useState(() => {
     // Optionale Deep-Links: ?dev=<serial> öffnet die Detailansicht,
-    // ?view=settings|log|dashboard öffnet direkt eine Hauptansicht
+    // ?view=settings|log|dashboard|onboarding öffnet direkt eine Hauptansicht
     try {
       const q = new URLSearchParams(window.location.search);
       const v = q.get('view');

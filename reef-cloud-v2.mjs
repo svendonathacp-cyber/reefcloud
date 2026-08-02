@@ -1171,6 +1171,32 @@ function assertNoCtrl(field, value) {
   }
 }
 
+// WLAN-Scan drosseln: geteilte In-Flight-Promise (parallele Requests warten
+// auf denselben Scan) + kurzer Ergebnis-Cache, damit UI-Spam/Mehrfach-Klicks
+// keine netsh/nmcli-Prozessflut auslösen.
+const ONBOARDING_SCAN_CACHE_MS = 12_000;
+let onboardingScanCache = null; // { ts, payload }
+let onboardingScanInflight = null; // Promise | null
+function onboardingScan() {
+  if (onboardingScanCache && Date.now() - onboardingScanCache.ts < ONBOARDING_SCAN_CACHE_MS) {
+    return Promise.resolve(onboardingScanCache.payload);
+  }
+  if (!onboardingScanInflight) {
+    onboardingScanInflight = (async () => {
+      try {
+        return { networks: await scanWifiNetworks(), scannedAt: Date.now() };
+      } catch (e) {
+        return { networks: [], error: e.message, scannedAt: Date.now() };
+      }
+    })().then((payload) => {
+      // Fehler werden NICHT gecacht — ein Retry soll sofort wieder scannen
+      if (!payload.error) onboardingScanCache = { ts: Date.now(), payload };
+      return payload;
+    }).finally(() => { onboardingScanInflight = null; });
+  }
+  return onboardingScanInflight;
+}
+
 const webServer = http.createServer(async (req, res) => {
   const u = new URL(req.url || '/', 'http://reefcloud.local');
   try {
@@ -1293,17 +1319,13 @@ const webServer = http.createServer(async (req, res) => {
     if (u.pathname === '/api/onboarding/scan' && req.method === 'GET') {
       // Serverseitiger WLAN-Scan fürs Geräte-Onboarding (Browser können nicht
       // scannen). Statische Kommandos (netsh/nmcli/iwlist) mit Timeout —
-      // Details in reef-onboarding.mjs. Fehler (z. B. Server per LAN ohne
+      // Details in reef-onboarding.mjs. In-Flight geteilt + 12 s Ergebnis-
+      // Cache (siehe onboardingScan). Fehler (z. B. Server per LAN ohne
       // WLAN-Adapter) kommen als { networks: [], error } mit HTTP 200, damit
       // die UI sie als Hinweis statt als harten Fehler anzeigen kann.
-      try {
-        const networks = await scanWifiNetworks();
-        log(`  [webui] onboarding/scan: ${networks.length} WLAN(s) sichtbar`);
-        return webSendJson(res, { networks, scannedAt: Date.now() });
-      } catch (e) {
-        log(`  [webui] onboarding/scan nicht möglich: ${e.message}`);
-        return webSendJson(res, { networks: [], error: e.message, scannedAt: Date.now() });
-      }
+      const payload = await onboardingScan();
+      log(`  [webui] onboarding/scan: ${payload.error ? `nicht möglich: ${payload.error}` : `${payload.networks.length} WLAN(s) sichtbar`}`);
+      return webSendJson(res, payload);
     }
     if (u.pathname === '/api/setup/status' && req.method === 'GET') {
       // Setup-Wizard-Status. Token wird absichtlich nie zurückgegeben.

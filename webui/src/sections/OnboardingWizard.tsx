@@ -80,7 +80,7 @@ function ApModeSvg({ label }: { label: string }) {
   );
 }
 
-function ConnectWifiSvg({ label }: { label: string }) {
+function ConnectWifiSvg({ label, homeWifi, neighborWifi }: { label: string; homeWifi: string; neighborWifi: string }) {
   return (
     <IllustrationFrame label={label}>
       {/* Handy */}
@@ -90,18 +90,18 @@ function ConnectWifiSvg({ label }: { label: string }) {
       {/* WLAN-Liste */}
       <text x="110" y="50" fontSize="11" fill="#9fc1ff" fontWeight="600" {...SVG_FONT}>Wi-Fi</text>
       <rect x="104" y="58" width="112" height="22" rx="5" fill="#16223a" />
-      <text x="112" y="73" fontSize="10" fill="#8fa3c0" {...SVG_FONT}>Heimnetz</text>
+      <text x="112" y="73" fontSize="10" fill="#8fa3c0" {...SVG_FONT}>{homeWifi}</text>
       <rect x="104" y="84" width="112" height="22" rx="5" fill="#0d2b1a" stroke="#52d273" strokeWidth="1.5" />
       <text x="112" y="99" fontSize="10" fill="#9fe8bd" {...SVG_FONT}>RF…-Setup</text>
       <path d="M206 91 l3 3 l5 -6" fill="none" stroke="#52d273" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <rect x="104" y="110" width="112" height="22" rx="5" fill="#16223a" />
-      <text x="112" y="125" fontSize="10" fill="#8fa3c0" {...SVG_FONT}>Nachbar-WLAN</text>
+      <text x="112" y="125" fontSize="10" fill="#8fa3c0" {...SVG_FONT}>{neighborWifi}</text>
       <text x="160" y="150" textAnchor="middle" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>⋯</text>
     </IllustrationFrame>
   );
 }
 
-function ConfigureSvg({ label }: { label: string }) {
+function ConfigureSvg({ label, ssidLine, passwordLine }: { label: string; ssidLine: string; passwordLine: string }) {
   return (
     <IllustrationFrame label={label}>
       {/* Browserfenster */}
@@ -113,9 +113,9 @@ function ConfigureSvg({ label }: { label: string }) {
       <text x="120" y="35" textAnchor="middle" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>192.168.4.1</text>
       {/* Formular */}
       <rect x="44" y="52" width="152" height="18" rx="4" fill="#0b1220" stroke="#2c3f61" strokeWidth="1" />
-      <text x="52" y="65" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>SSID: Heimnetz</text>
+      <text x="52" y="65" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>{ssidLine}</text>
       <rect x="44" y="76" width="152" height="18" rx="4" fill="#0b1220" stroke="#2c3f61" strokeWidth="1" />
-      <text x="52" y="89" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>Passwort: ••••••••</text>
+      <text x="52" y="89" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>{passwordLine}</text>
       <rect x="44" y="100" width="152" height="18" rx="4" fill="#0b1220" stroke="#4d7bd6" strokeWidth="1.5" />
       <text x="52" y="113" fontSize="9" fill="#9fc1ff" {...SVG_FONT}>Server: reef-cloud</text>
       <rect x="44" y="128" width="80" height="20" rx="5" fill="#0d2b1a" stroke="#52d273" strokeWidth="1.5" />
@@ -138,14 +138,14 @@ function ConfigureSvg({ label }: { label: string }) {
   );
 }
 
-function SearchSvg({ label }: { label: string }) {
+function SearchSvg({ label, yourServer }: { label: string; yourServer: string }) {
   return (
     <IllustrationFrame label={label}>
       {/* Server */}
       <rect x="30" y="70" width="100" height="56" rx="8" fill="#16223a" stroke="#4d7bd6" strokeWidth="2" />
       <circle cx="44" cy="86" r="4" fill="#52d273" />
       <text x="90" y="90" textAnchor="middle" fontSize="11" fill="#9fc1ff" {...SVG_FONT}>reef-cloud</text>
-      <text x="80" y="110" textAnchor="middle" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>dein Server</text>
+      <text x="80" y="110" textAnchor="middle" fontSize="9" fill="#8fa3c0" {...SVG_FONT}>{yourServer}</text>
       {/* Gerät */}
       <rect x="220" y="76" width="70" height="44" rx="8" fill="#16223a" stroke="#2c3f61" strokeWidth="2" />
       <text x="255" y="102" textAnchor="middle" fontSize="11" fill="#9fc1ff" {...SVG_FONT}>RF</text>
@@ -329,9 +329,19 @@ export default function OnboardingWizard({ devices, onDone, onOpenDevice }: Prop
 
   const illustrations = [
     <ApModeSvg key="ap" label={t('onboarding.step.apMode')} />,
-    <ConnectWifiSvg key="cw" label={t('onboarding.step.connectWifi')} />,
-    <ConfigureSvg key="cf" label={t('onboarding.step.configure')} />,
-    <SearchSvg key="se" label={t('onboarding.step.search')} />,
+    <ConnectWifiSvg
+      key="cw"
+      label={t('onboarding.step.connectWifi')}
+      homeWifi={t('onboarding.svg.homeWifi')}
+      neighborWifi={t('onboarding.svg.neighborWifi')}
+    />,
+    <ConfigureSvg
+      key="cf"
+      label={t('onboarding.step.configure')}
+      ssidLine={`${t('onboarding.svg.ssidLabel')} ${t('onboarding.svg.homeWifi')}`}
+      passwordLine={`${t('onboarding.svg.passwordLabel')} ••••••••`}
+    />,
+    <SearchSvg key="se" label={t('onboarding.step.search')} yourServer={t('onboarding.svg.yourServer')} />,
   ];
 
   return (
@@ -561,6 +571,15 @@ export default function OnboardingWizard({ devices, onDone, onOpenDevice }: Prop
                           {foundDevice ? deviceDisplayName(foundDevice) || found.serial : found.serial}
                           <span className="ml-2 text-muted-foreground">({found.serial})</span>
                         </p>
+                        {/* Ohne Serial-Eingabe kann auch ein zufällig gleichzeitig
+                            verbindendes Gerät gefunden worden sein — zur Sicherheit
+                            eine explizite Bestätigungszeile zeigen. */}
+                        {!serial && (
+                          <p className="mt-2 flex items-start gap-1.5 text-xs text-emerald-200/90">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            {t('onboarding.success.confirm', { serial: found.serial })}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">

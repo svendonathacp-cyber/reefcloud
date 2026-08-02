@@ -37,9 +37,13 @@ SSID 2 : RFTC-Setup
 SSID 3 : ESP_12AB34
     BSSID 1                 : 33:44:55:66:77:88
          Signal             : 60%
+
+SSID 4 : 
+    BSSID 1                 : 44:55:66:77:88:99
+         Signal             : 100%
 `;
 const netshParsed = parseNetsh(netshDe);
-check('netsh: Anzahl SSIDs', netshParsed.length, 3);
+check('netsh: Anzahl SSIDs (verstecktes Netz mit leerer SSID übersprungen)', netshParsed.length, 3);
 check('netsh: SSID 1 Name', netshParsed[0]?.ssid, 'Heimnetz');
 check('netsh: SSID 1 max Signal über 2 BSSIDs', netshParsed[0]?.signal, 82);
 check('netsh: SSID 2 Signal', netshParsed[1]?.signal, 91);
