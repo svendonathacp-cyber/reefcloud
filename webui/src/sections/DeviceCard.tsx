@@ -42,6 +42,19 @@ export const WAVE_MODE_KEYS: Record<number, MessageKey> = {
   1: 'waveMode.1', 2: 'waveMode.2', 3: 'waveMode.3', 4: 'waveMode.4',
 };
 
+// Level-Keeper-Status (Server-Key aus LK_STATUS_TEXT, reef-onboard.mjs) → i18n
+export const LK_STATUS_KEYS: Record<string, MessageKey> = {
+  normal: 'lk.status.normal', filling: 'lk.status.filling',
+  manualRefill: 'lk.status.manualRefill', circuit: 'lk.status.circuit',
+  calibration: 'lk.status.calibration', high: 'lk.status.high',
+  low: 'lk.status.low', temporaryOff: 'lk.status.temporaryOff',
+};
+
+// Level-Keeper-Modi (Nachfüllzyklus, 0–5) → i18n
+export const LK_MODE_KEYS: Record<number, MessageKey> = {
+  0: 'lk.mode.0', 1: 'lk.mode.1', 2: 'lk.mode.2', 3: 'lk.mode.3', 4: 'lk.mode.4', 5: 'lk.mode.5',
+};
+
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = '') => (typeof v === 'string' ? v : d);
 const obj = (v: unknown): Record<string, unknown> =>
