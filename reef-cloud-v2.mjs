@@ -155,6 +155,15 @@ function writeEnvConfig({ tunnelUrl, tunnelToken, tunnelType, tunnelLabel }) {
   if (tunnelType !== undefined) updates.TUNNEL_TYPE = tunnelType;
   if (tunnelLabel !== undefined) updates.TUNNEL_LABEL = tunnelLabel;
 
+  // Zweite Schutzschicht gegen Env-Injection (erste: Validierung in den
+  // API-Endpunkten): Steuerzeichen (\r, \n, \0 …) in Werten hart ablehnen,
+  // sonst könnte ein Wert zusätzliche KEY=-Zeilen in die Datei schmuggeln.
+  for (const [k, v] of Object.entries(updates)) {
+    if (/[\x00-\x1f\x7f]/.test(String(v))) {
+      throw new Error(`writeEnvConfig: Steuerzeichen in ${k} nicht erlaubt`);
+    }
+  }
+
   // Zieldatei bestimmen (Pi-Boot-Partition bevorzugt)
   let target = path.join(__dirname, '.env');
   try {
@@ -291,21 +300,30 @@ function probeTcp(ip, port, timeoutMs = 2000) {
   });
 }
 
+// Re-Entry-Guard: ein Lauf kann (bei vielen Geräten × 2 s Timeout) länger
+// dauern als das Intervall — überlappende Läufe werden übersprungen.
+let probing = false;
 async function probeOfflineDevices() {
-  for (const [serial, m] of deviceMeta) {
-    if (devices.has(serial)) continue; // eingeloggt = online, kein Probe nötig
-    const ip = (m.ip || '').replace('::ffff:', '');
-    if (!ip) continue;                 // ohne bekannte IP kein Probe möglich
-    const [p80, p443] = await Promise.all([probeTcp(ip, 80), probeTcp(ip, 443)]);
-    const reachable = p80 || p443;
-    m.lastProbe = Date.now();
-    // Log nur bei Zustandswechsel (null → true/false beim ersten Probe zählt auch)
-    if (m.reachable !== reachable) {
-      m.reachable = reachable;
-      if (reachable) log(`Gerät ${serial} ist per TCP erreichbar, aber nicht eingeloggt (${ip})`);
-      else log(`Gerät ${serial} ist nicht mehr erreichbar (${ip})`);
-      announce(serial, true); // Zustandswechsel → Tunnel/Web-UI informieren
+  if (probing) return;
+  probing = true;
+  try {
+    for (const [serial, m] of deviceMeta) {
+      if (devices.has(serial)) continue; // eingeloggt = online, kein Probe nötig
+      const ip = (m.ip || '').replace('::ffff:', '');
+      if (!ip) continue;                 // ohne bekannte IP kein Probe möglich
+      const [p80, p443] = await Promise.all([probeTcp(ip, 80), probeTcp(ip, 443)]);
+      const reachable = p80 || p443;
+      m.lastProbe = Date.now();
+      // Log nur bei Zustandswechsel (null → true/false beim ersten Probe zählt auch)
+      if (m.reachable !== reachable) {
+        m.reachable = reachable;
+        if (reachable) log(`Gerät ${serial} ist per TCP erreichbar, aber nicht eingeloggt (${ip})`);
+        else log(`Gerät ${serial} ist nicht mehr erreichbar (${ip})`);
+        announce(serial, true); // Zustandswechsel → Tunnel/Web-UI informieren
+      }
     }
+  } finally {
+    probing = false;
   }
 }
 setInterval(probeOfflineDevices, 60_000).unref();
@@ -313,6 +331,7 @@ setTimeout(probeOfflineDevices, 5_000).unref(); // erster Lauf kurz nach Start
 
 function snapshot(serial) {
   const m = metaFor(serial);
+  const online = devices.has(serial); // snapshot() läuft erst zur Laufzeit (devices ist später deklariert — sicher)
   return {
     serial,
     name: deviceName(serial),
@@ -320,10 +339,12 @@ function snapshot(serial) {
     ip: (m.ip || '').replace('::ffff:', ''),
     family: m.family,
     firmware: m.firmware,
-    online: devices.has(serial),
+    online,
     state: m.state,
     lastSeen: m.lastSeen,
-    reachable: m.reachable ?? false, // Hello-Ping: per TCP erreichbar, aber offline
+    // Hello-Ping: per TCP erreichbar, aber offline. Eingeloggte Geräte sind
+    // trivialerweise erreichbar — sonst widersprüchlich (online:true, reachable:false).
+    reachable: online ? true : (m.reachable ?? false),
     lastProbe: m.lastProbe ?? 0,
     ...(m.lampProgram ? { lampProgram: m.lampProgram } : {}),
   };
@@ -1034,6 +1055,15 @@ function webReadBody(req) {
   });
 }
 
+// Erste Schutzschicht gegen Env-Injection: Werte mit Zeilenumbrüchen/
+// Steuerzeichen ablehnen (400 über den zentralen catch). Zweite Schicht
+// sitzt in writeEnvConfig().
+function assertNoCtrl(field, value) {
+  if (/[\r\n]/.test(String(value))) {
+    throw new Error(`${field} darf keine Zeilenumbrüche enthalten`);
+  }
+}
+
 const webServer = http.createServer(async (req, res) => {
   const u = new URL(req.url || '/', 'http://reefcloud.local');
   try {
@@ -1064,6 +1094,7 @@ const webServer = http.createServer(async (req, res) => {
       const body = JSON.parse(await webReadBody(req) || '{}');
       const serial = String(body.serial || '').trim();
       if (!serial) throw new Error('serial fehlt');
+      if (!/^[\w-]{1,32}$/.test(serial)) throw new Error('serial ungültig (1–32 Zeichen: Buchstaben, Ziffern, _, -)');
       const name = String(body.name ?? '').replace(/[<>&]/g, '').trim().slice(0, 40);
       if (name) customNames.set(serial, name); else customNames.delete(serial);
       saveNames(); // sofort atomar persistieren
@@ -1164,6 +1195,8 @@ const webServer = http.createServer(async (req, res) => {
       if (!tunnelToken && TUNNEL_TOKEN) tunnelToken = TUNNEL_TOKEN; // leer = bestehenden behalten
       if (!/^[0-9a-f]{32,128}$/i.test(tunnelToken)) throw new Error('tunnelToken ungültig (32–128 Hex-Zeichen erwartet)');
       if (!/^wss?:\/\//.test(tunnelUrl)) throw new Error('tunnelUrl muss mit ws:// oder wss:// beginnen');
+      assertNoCtrl('tunnelUrl', tunnelUrl);
+      assertNoCtrl('tunnelToken', tunnelToken);
       const envFile = writeEnvConfig({ tunnelUrl, tunnelToken });
       TUNNEL_URL = tunnelUrl;
       TUNNEL_TOKEN = tunnelToken;
@@ -1193,6 +1226,9 @@ const webServer = http.createServer(async (req, res) => {
       if (!/^wss?:\/\//.test(tunnelUrl)) throw new Error('tunnelUrl muss mit ws:// oder wss:// beginnen');
       if (tunnelToken && !/^[0-9a-f]{32,128}$/i.test(tunnelToken)) throw new Error('tunnelToken ungültig (32–128 Hex-Zeichen erwartet)');
       if (!TUNNEL_TYPES.includes(tunnelType)) throw new Error(`tunnelType ungültig (erlaubt: ${TUNNEL_TYPES.join(', ')})`);
+      assertNoCtrl('tunnelUrl', tunnelUrl);
+      assertNoCtrl('tunnelLabel', tunnelLabel);
+      assertNoCtrl('tunnelToken', tunnelToken);
       const envFile = writeEnvConfig({ tunnelUrl, tunnelToken: tunnelToken ?? undefined, tunnelType, tunnelLabel });
       TUNNEL_URL = tunnelUrl;
       TUNNEL_TOKEN = tunnelToken;
