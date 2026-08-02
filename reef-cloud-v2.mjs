@@ -134,7 +134,7 @@ function loadEnv() {
   return env;
 }
 const ENV = loadEnv();
-let TUNNEL_URL = ENV.TUNNEL_URL || 'wss://donath-home.de/api/reef/tunnel';
+let TUNNEL_URL = ENV.TUNNEL_URL || '';
 let TUNNEL_TOKEN = ENV.TUNNEL_TOKEN || null;
 // Tunnel-Ziel generisch einstellbar (WebOS-Server, HomeAssistant, Custom):
 // TUNNEL_TYPE wählt die Zielplattform, TUNNEL_LABEL ist der Anzeigename.
@@ -756,8 +756,8 @@ async function handleTunnelRequest(method, params) {
 function launchTunnel(reason = 'Start') {
   try { tunnel?.stop?.(); } catch {}
   tunnel = null;
-  if (!TUNNEL_TOKEN) {
-    log('Tunnel deaktiviert (kein TUNNEL_TOKEN in .env / /boot/reef-cloud.env)');
+  if (!TUNNEL_TOKEN || !TUNNEL_URL) {
+    log('Tunnel deaktiviert (kein TUNNEL_TOKEN/TUNNEL_URL in .env / /boot/reef-cloud.env)');
     return;
   }
   tunnel = startTunnel({

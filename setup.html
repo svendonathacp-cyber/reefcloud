@@ -72,17 +72,25 @@
   </div>
 
   <div class="step">
-    <h2>3 · Tunnel zum WebOS-Server (optional, aber empfohlen)</h2>
-    <p>Verbindet diese Instanz mit der Aquarium-App (fernsteuerbar über das Internet).</p>
-    <label for="url">Tunnel-URL</label>
-    <input id="url" spellcheck="false">
-    <label for="token">Tunnel-Token</label>
-    <input id="token" type="password" spellcheck="false" placeholder="64-stelliger Hex-Token">
-    <div class="row">
-      <button id="testBtn">Verbindung testen</button>
-      <button id="saveBtn">Speichern &amp; starten</button>
-    </div>
-    <div id="msg" class="msg"></div>
+    <details id="tunnelDetails">
+      <summary>
+        <h2 style="display:inline">3 · Tunnel zu einem externen Server <span style="color:#8fa3c0; font-weight:400">(optional)</span></h2>
+        <p style="margin:4px 0 0">Nur nötig, wenn du reef-cloud mit einem eigenen Server (z. B. WebOS,
+           HomeAssistant) verbinden willst — rein lokaler Betrieb braucht das nicht.
+           <em>Zum Konfigurieren aufklappen.</em></p>
+      </summary>
+      <div style="margin-top:12px">
+        <label for="url">Tunnel-URL</label>
+        <input id="url" spellcheck="false" placeholder="wss://dein-server.example/tunnel-pfad">
+        <label for="token">Tunnel-Token</label>
+        <input id="token" type="password" spellcheck="false" placeholder="64-stelliger Hex-Token">
+        <div class="row">
+          <button id="testBtn">Verbindung testen</button>
+          <button id="saveBtn">Speichern &amp; starten</button>
+        </div>
+        <div id="msg" class="msg"></div>
+      </div>
+    </details>
   </div>
 
   <div class="step done" id="done">
@@ -135,7 +143,7 @@ async function loadStatus() {
       li.textContent = 'Keine LAN-IP gefunden — Netzwerk prüfen.';
       ipList.append(li);
     }
-    $('url').value = s.tunnelUrl || 'wss://donath-home.de/api/reef/tunnel';
+    $('url').value = s.tunnelUrl || ''; // keine Voreinstellung — URL kommt vom Nutzer
     if (s.hasToken) $('token').placeholder = 'Token gespeichert — leer lassen zum Behalten';
   } catch (e) {
     $('certLine').textContent = 'Status konnte nicht geladen werden: ' + e.message;
