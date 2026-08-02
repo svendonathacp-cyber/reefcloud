@@ -269,7 +269,6 @@ export const de = {
   'autolevel.noSensor': '— nicht zugeordnet —',
   'autolevel.noLevelSensors': 'Keine Level-Sensoren gefunden — sie erscheinen nach ihrem Login an der Cloud.',
   'autolevel.pumpSpeed': 'Pumpenstärke',
-  'autolevel.sensorState': 'Sensorzustand',
   'autolevel.state.ok': 'in Ordnung',
   'autolevel.state.alarmHigh': 'Alarm: zu voll',
   'autolevel.state.alarmLow': 'Alarm: zu niedrig',
@@ -294,7 +293,6 @@ export const de = {
   'autolevel.validation.cooldown': 'Abklingzeit: ganze Zahl von 10 bis 600 Sekunden.',
   'autolevel.history.title': 'Verlauf',
   'autolevel.history.empty': 'Noch keine Eingriffe in dieser Server-Sitzung.',
-  'autolevel.history.entry': '{time} · {reason} · {old} % → {new} %',
   'autolevel.hint.selectSensors': 'Zum Aktivieren bitte beide Sensoren zuordnen.',
   'autolevel.pumpOffline': 'Pumpe offline',
 } as const;
@@ -543,7 +541,6 @@ export const en: Record<MessageKey, string> = {
   'autolevel.noSensor': '— not assigned —',
   'autolevel.noLevelSensors': 'No level sensors found — they appear after logging in to the cloud.',
   'autolevel.pumpSpeed': 'Pump power',
-  'autolevel.sensorState': 'Sensor state',
   'autolevel.state.ok': 'OK',
   'autolevel.state.alarmHigh': 'Alarm: too full',
   'autolevel.state.alarmLow': 'Alarm: too low',
@@ -568,7 +565,6 @@ export const en: Record<MessageKey, string> = {
   'autolevel.validation.cooldown': 'Cooldown: integer from 10 to 600 seconds.',
   'autolevel.history.title': 'History',
   'autolevel.history.empty': 'No adjustments in this server session yet.',
-  'autolevel.history.entry': '{time} · {reason} · {old} % → {new} %',
   'autolevel.hint.selectSensors': 'Please assign both sensors to enable.',
   'autolevel.pumpOffline': 'Pump offline',
 };

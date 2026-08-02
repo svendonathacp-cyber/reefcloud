@@ -78,6 +78,18 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
     return typeof s.sensor0 === 'string' ? s.sensor0 : 'unknown';
   }
 
+  // Richtungsbewusste Alarm-Abfrage: ein 'ok' auf sensor0 darf einen Alarm
+  // auf sensor1 NICHT maskieren (Zwei-Sonden-Gerät, oder dasselbe Gerät
+  // versehentlich als Hoch- UND Tief-Sensor zugeordnet). Protokoll-Lage:
+  // idx0 kann nie alarmHigh, idx1 nie alarmLow — beide Felder prüfen ist
+  // damit für beide Richtungen sicher und deckt auch Ein-Sonden-Geräte ab,
+  // die ihre Sonde je nach Firmware auf idx0 ODER idx1 melden.
+  function alarmActive(serial, reason) {
+    const s = metaFor(serial)?.state;
+    if (!s) return false;
+    return s.sensor0 === reason || s.sensor1 === reason;
+  }
+
   function pumpOnline() {
     const d = config.pumpSerial && devices.get(config.pumpSerial);
     return !!(d && d.readyState === d.OPEN);
@@ -132,11 +144,11 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
   function check() {
     try {
       if (!config.enabled || !config.pumpSerial) return;
-      if (config.highSerial && sensorState(config.highSerial) === 'alarmHigh') {
+      if (config.highSerial && alarmActive(config.highSerial, 'alarmHigh')) {
         adjust('alarmHigh');
         return;
       }
-      if (config.lowSerial && sensorState(config.lowSerial) === 'alarmLow') {
+      if (config.lowSerial && alarmActive(config.lowSerial, 'alarmLow')) {
         adjust('alarmLow');
       }
     } catch (e) { log(`!! [autolevel] Prüffehler: ${e.message}`); }
@@ -215,6 +227,14 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
     const nextMin = patch.minSpeed ?? config.minSpeed;
     const nextMax = patch.maxSpeed ?? config.maxSpeed;
     if (!(nextMin < nextMax)) throw new Error(`minSpeed (${nextMin}) muss kleiner als maxSpeed (${nextMax}) sein`);
+    // Dasselbe Gerät darf nicht Hoch- UND Tief-Sensor sein: sensor0='ok'
+    // würde sonst ein alarmHigh auf sensor1 dauerhaft maskieren — die
+    // Voll-Schutzrichtung wäre still tot.
+    const nextHigh = patch.highSerial ?? config.highSerial;
+    const nextLow = patch.lowSerial ?? config.lowSerial;
+    if (nextHigh && nextLow && nextHigh === nextLow) {
+      throw new Error('Hoch- und Tief-Sensor müssen zwei verschiedene Geräte sein');
+    }
     if (patch.enabled === true && !(patch.pumpSerial ?? config.pumpSerial)) {
       throw new Error('Zum Aktivieren muss eine Pumpe (pumpSerial) konfiguriert sein');
     }
