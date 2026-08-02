@@ -160,7 +160,7 @@ export default function Home() {
 
           {view === 'log' && <LogView frames={frames} captureOn={captureOn} />}
           {view === 'settings' && <Settings />}
-          {view !== 'dashboard' && view !== 'log' && view !== 'settings' && currentDev && <DeviceDetail dev={currentDev} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
+          {view !== 'dashboard' && view !== 'log' && view !== 'settings' && currentDev && <DeviceDetail dev={currentDev} devices={devices} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
         </main>
       </div>
     </div>
