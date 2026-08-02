@@ -181,6 +181,7 @@ try {
     });
     const wss = new WebSocketServer({
       server: httpsServer,
+      maxPayload: 1 * 1024 * 1024, // Geräte-Frames sind wenige KB — 100-MiB-Default ist zu groß
       handleProtocols: (protocols) => {
         log(`  [Port ${port}] angebotene Subprotokolle: ${[...protocols].join(', ') || '(keine)'}`);
         if (protocols.has('reeffactory')) return 'reeffactory';
@@ -213,6 +214,7 @@ const httpServer = http.createServer((req, res) => {
 });
 const wsPlain = new WebSocketServer({
   server: httpServer,
+  maxPayload: 1 * 1024 * 1024,
   handleProtocols: (protocols) => {
     log(`  [Port 80] angebotene Subprotokolle: ${[...protocols].join(', ') || '(keine)'}`);
     if (protocols.has('arduino')) return 'arduino';

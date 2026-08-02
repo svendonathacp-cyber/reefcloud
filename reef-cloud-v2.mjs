@@ -830,6 +830,9 @@ function createWssServer(port, role, frameHandler, useTls = true) {
   });
   const wss = new WebSocketServer({
     server,
+    // WS-Payload-Limit: echte Geräte-/App-Frames sind wenige KB groß;
+    // der ws-Default (100 MiB) erlaubt Memory-Pressure per Riesenframe.
+    maxPayload: 1 * 1024 * 1024,
     handleProtocols: (protocols) => {
       // Altgeräte bieten 'arduino', neue 'reeffactory', manche nichts — alles annehmen
       if (protocols.has('reeffactory')) return 'reeffactory';
