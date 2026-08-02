@@ -146,13 +146,18 @@ function writeEnvConfig({ tunnelUrl, tunnelToken }) {
     '',
   ];
   const bootPath = '/boot/reef-cloud.env';
+  // mode 0o600: die Datei enthält den Tunnel-Token — nicht lesbar für andere
+  // Benutzer. writeFileSync-mode greift nur bei Neuanlage, daher chmod nachziehen
+  // (bestehende Datei aus früheren Setups hatte umask-Default, typisch 0o644).
   try {
     fs.accessSync('/boot', fs.constants.W_OK);
-    fs.writeFileSync(bootPath, lines.join('\n'));
+    fs.writeFileSync(bootPath, lines.join('\n'), { mode: 0o600 });
+    try { fs.chmodSync(bootPath, 0o600); } catch { /* Windows/andere FS: best effort */ }
     return bootPath;
   } catch { /* kein Pi oder /boot nicht beschreibbar */ }
   const localPath = path.join(__dirname, '.env');
-  fs.writeFileSync(localPath, lines.join('\n'));
+  fs.writeFileSync(localPath, lines.join('\n'), { mode: 0o600 });
+  try { fs.chmodSync(localPath, 0o600); } catch { /* best effort */ }
   return localPath;
 }
 
