@@ -8,6 +8,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -135,25 +136,49 @@ function loadEnv() {
 const ENV = loadEnv();
 let TUNNEL_URL = ENV.TUNNEL_URL || 'wss://donath-home.de/api/reef/tunnel';
 let TUNNEL_TOKEN = ENV.TUNNEL_TOKEN || null;
+// Tunnel-Ziel generisch einstellbar (WebOS-Server, HomeAssistant, Custom):
+// TUNNEL_TYPE wählt die Zielplattform, TUNNEL_LABEL ist der Anzeigename.
+// HINWEIS: Ein HomeAssistant-spezifisches Event-Mapping kommt später —
+// aktuell ist TUNNEL_TYPE nur Meta-Info (Protokoll ist bei allen Typen gleich).
+const TUNNEL_TYPES = ['webos', 'homeassistant', 'custom'];
+let TUNNEL_TYPE = TUNNEL_TYPES.includes(ENV.TUNNEL_TYPE) ? ENV.TUNNEL_TYPE : 'webos';
+let TUNNEL_LABEL = ENV.TUNNEL_LABEL || 'WebOS-Server';
 
 // Konfiguration persistieren: Pi → /boot/reef-cloud.env (Konfigurationsweg
 // laut Pi-Briefing, kommt nicht ins Image), sonst .env neben dem Server.
-function writeEnvConfig({ tunnelUrl, tunnelToken }) {
-  const lines = [
-    '# reef-cloud Konfiguration (Setup-Wizard, ' + new Date().toISOString() + ')',
-    `TUNNEL_URL=${tunnelUrl}`,
-    `TUNNEL_TOKEN=${tunnelToken}`,
-    '',
-  ];
-  const bootPath = '/boot/reef-cloud.env';
+// MERGE statt Vollüberschreiben: bestehende Kommentare und unbekannte Zeilen
+// der Datei bleiben erhalten, nur übergebene Keys werden ersetzt/ergänzt.
+function writeEnvConfig({ tunnelUrl, tunnelToken, tunnelType, tunnelLabel }) {
+  const updates = {};
+  if (tunnelUrl !== undefined) updates.TUNNEL_URL = tunnelUrl;
+  if (tunnelToken !== undefined) updates.TUNNEL_TOKEN = tunnelToken;
+  if (tunnelType !== undefined) updates.TUNNEL_TYPE = tunnelType;
+  if (tunnelLabel !== undefined) updates.TUNNEL_LABEL = tunnelLabel;
+
+  // Zieldatei bestimmen (Pi-Boot-Partition bevorzugt)
+  let target = path.join(__dirname, '.env');
   try {
     fs.accessSync('/boot', fs.constants.W_OK);
-    fs.writeFileSync(bootPath, lines.join('\n'));
-    return bootPath;
+    target = '/boot/reef-cloud.env';
   } catch { /* kein Pi oder /boot nicht beschreibbar */ }
-  const localPath = path.join(__dirname, '.env');
-  fs.writeFileSync(localPath, lines.join('\n'));
-  return localPath;
+
+  // Bestehende Datei einlesen: Kommentare/unbekannte Zeilen erhalten,
+  // bekannte Keys ersetzen, fehlende anhängen
+  let lines = [];
+  try { lines = fs.readFileSync(target, 'utf8').split('\n'); } catch { /* Datei wird neu angelegt */ }
+  if (!lines.length || (lines.length === 1 && lines[0].trim() === '')) {
+    lines = ['# reef-cloud Konfiguration (Setup-Wizard, ' + new Date().toISOString() + ')'];
+  }
+  const seen = new Set();
+  lines = lines.map((line) => {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=/);
+    if (m && m[1] in updates) { seen.add(m[1]); return `${m[1]}=${updates[m[1]]}`; }
+    return line;
+  });
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  for (const [k, v] of Object.entries(updates)) if (!seen.has(k)) lines.push(`${k}=${v}`);
+  fs.writeFileSync(target, lines.join('\n') + '\n');
+  return target;
 }
 
 // Tunnel-Verbindungstest fürs Setup: öffnet kurz eine eigene WS-Verbindung
@@ -212,14 +237,33 @@ function familyOf(serial) {
   return FAMILY[serial.slice(0, 4)] || FAMILY[serial.slice(0, 5)] || 'unknown';
 }
 
-// Geräte-Meta für Snapshots: serial → { family, firmware, ip, state, lastSeen, online }
+// Geräte-Meta für Snapshots: serial → { family, firmware, ip, state, lastSeen,
+// online, reachable, lastProbe } (reachable/lastProbe vom Hello-Ping, s.u.)
 const deviceMeta = new Map();
 
 function metaFor(serial) {
   if (!deviceMeta.has(serial)) {
-    deviceMeta.set(serial, { family: familyOf(serial), firmware: null, ip: null, state: {}, lastSeen: 0, online: false });
+    deviceMeta.set(serial, { family: familyOf(serial), firmware: null, ip: null, state: {}, lastSeen: 0, online: false, reachable: null, lastProbe: 0 });
   }
   return deviceMeta.get(serial);
+}
+
+// ---------- Geräte-Spitznamen (Nicknames) ----------
+// Persistenz: names.json im Server-Verzeichnis ({ "<serial>": "<name>" }).
+// Laufzeitdaten — steht in .gitignore. Schreiben atomar (tmp-Datei + rename).
+const NAMES_FILE = path.join(__dirname, 'names.json');
+const customNames = new Map();
+try {
+  for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(NAMES_FILE, 'utf8')))) {
+    if (typeof v === 'string' && v.trim()) customNames.set(k, v);
+  }
+  if (customNames.size) log(`Nicknames geladen: ${customNames.size} Spitznamen aus names.json`);
+} catch { /* Datei optional oder defekt → mit leeren Nicknames starten */ }
+
+function saveNames() {
+  const tmp = NAMES_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(customNames), null, 2) + '\n');
+  fs.renameSync(tmp, NAMES_FILE);
 }
 
 // Alle Geräte aus dem Tank-Modell von Anfang an kennen — sonst zeigen Web-UI
@@ -230,17 +274,57 @@ if (tankModel) {
   log(`deviceMeta initialisiert: ${deviceMeta.size} bekannte Geräte aus dem Tank-Modell`);
 }
 
+// ---------- Erreichbarkeits-Ping („Hello-Ping") für offline Geräte ----------
+// Die Geräte sind WS-Clients — der Server kann keine WS-Verbindung ZUM Gerät
+// öffnen. Stattdessen TCP-Connect-Versuche (node:net, kein ICMP, keine neuen
+// Dependencies) auf Port 80 und 443 an der letzten bekannten IP, je 2 s Timeout.
+// Läuft alle 60 s, nur für bekannte Geräte mit IP, die NICHT eingeloggt sind.
+function probeTcp(ip, port, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ host: ip, port });
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; try { sock.destroy(); } catch {} resolve(ok); };
+    sock.setTimeout(timeoutMs);
+    sock.once('connect', () => finish(true));
+    sock.once('timeout', () => finish(false));
+    sock.once('error', () => finish(false));
+  });
+}
+
+async function probeOfflineDevices() {
+  for (const [serial, m] of deviceMeta) {
+    if (devices.has(serial)) continue; // eingeloggt = online, kein Probe nötig
+    const ip = (m.ip || '').replace('::ffff:', '');
+    if (!ip) continue;                 // ohne bekannte IP kein Probe möglich
+    const [p80, p443] = await Promise.all([probeTcp(ip, 80), probeTcp(ip, 443)]);
+    const reachable = p80 || p443;
+    m.lastProbe = Date.now();
+    // Log nur bei Zustandswechsel (null → true/false beim ersten Probe zählt auch)
+    if (m.reachable !== reachable) {
+      m.reachable = reachable;
+      if (reachable) log(`Gerät ${serial} ist per TCP erreichbar, aber nicht eingeloggt (${ip})`);
+      else log(`Gerät ${serial} ist nicht mehr erreichbar (${ip})`);
+      announce(serial, true); // Zustandswechsel → Tunnel/Web-UI informieren
+    }
+  }
+}
+setInterval(probeOfflineDevices, 60_000).unref();
+setTimeout(probeOfflineDevices, 5_000).unref(); // erster Lauf kurz nach Start
+
 function snapshot(serial) {
   const m = metaFor(serial);
   return {
     serial,
     name: deviceName(serial),
+    ...(customNames.has(serial) ? { customName: customNames.get(serial) } : {}),
     ip: (m.ip || '').replace('::ffff:', ''),
     family: m.family,
     firmware: m.firmware,
     online: devices.has(serial),
     state: m.state,
     lastSeen: m.lastSeen,
+    reachable: m.reachable ?? false, // Hello-Ping: per TCP erreichbar, aber offline
+    lastProbe: m.lastProbe ?? 0,
     ...(m.lampProgram ? { lampProgram: m.lampProgram } : {}),
   };
 }
@@ -627,7 +711,7 @@ function launchTunnel(reason = 'Start') {
     getSnapshots: () => [...deviceMeta.keys()].map(snapshot),
     handleRequest: handleTunnelRequest,
   });
-  log(`Tunnel aktiviert (${reason}) → ${TUNNEL_URL}`);
+  log(`Tunnel aktiviert (${reason}) → ${TUNNEL_URL} [${TUNNEL_TYPE}: ${TUNNEL_LABEL}]`);
 }
 launchTunnel();
 
@@ -891,6 +975,9 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 // ====================================================================
 // Endpunkte:
 //   GET  /api/devices  → { devices: [deviceSnapshot…], now }      (alle bekannten, auch offline)
+//   POST /api/devices/name { serial, name } → Spitzname setzen/ändern (leer = löschen)
+//   GET  /api/settings → Tunnel-Einstellungen (ohne Token)
+//   POST /api/settings { tunnelUrl?, tunnelToken?, tunnelType?, tunnelLabel? } → speichern + Tunnel neu starten
 //   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
 //   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
 //   /*               → statische Dateien aus webui/dist (SPA-Fallback auf index.html)
@@ -971,6 +1058,19 @@ const webServer = http.createServer(async (req, res) => {
       log(`  [webui] command ${action} → ${serial}: ${cls}/${mth}`);
       return webSendJson(res, { ok: true });
     }
+    if (u.pathname === '/api/devices/name' && req.method === 'POST') {
+      // Spitzname für ein Gerät setzen/ändern/löschen (leerer name = löschen).
+      // Bereinigung: trimmen, <>& entfernen, max. 40 Zeichen.
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const serial = String(body.serial || '').trim();
+      if (!serial) throw new Error('serial fehlt');
+      const name = String(body.name ?? '').replace(/[<>&]/g, '').trim().slice(0, 40);
+      if (name) customNames.set(serial, name); else customNames.delete(serial);
+      saveNames(); // sofort atomar persistieren
+      log(`  [webui] Nickname ${serial} → ${name ? `"${name}"` : '(gelöscht)'}`);
+      announce(serial, true); // geänderten Snapshot sofort an Tunnel melden
+      return webSendJson(res, { ok: true, serial, customName: name || null });
+    }
     if (u.pathname === '/api/capture') {
       if (req.method === 'POST') {
         const { on } = JSON.parse(await webReadBody(req) || '{}');
@@ -1043,6 +1143,8 @@ const webServer = http.createServer(async (req, res) => {
         needsSetup: !TUNNEL_TOKEN,
         hasToken: !!TUNNEL_TOKEN,
         tunnelUrl: TUNNEL_URL,
+        tunnelType: TUNNEL_TYPE,
+        tunnelLabel: TUNNEL_LABEL,
         tunnelConnected: !!(tunnel && tunnel.isConnected()),
         lanIps: lanIps(),
         cert: { cn: certInfo.cn, fingerprint256: certInfo.fingerprint256, notAfter: certInfo.notAfter },
@@ -1068,6 +1170,37 @@ const webServer = http.createServer(async (req, res) => {
       launchTunnel('Setup-Wizard');
       log(`  [setup] Konfiguration gespeichert → ${envFile}; Tunnel neu gestartet → ${tunnelUrl}`);
       return webSendJson(res, { ok: true, envFile, tunnelConnected: !!(tunnel && tunnel.isConnected()) });
+    }
+    // Laufzeit-Einstellungen des Tunnels (generisch: WebOS, HomeAssistant, Custom).
+    // Token wird absichtlich nie zurückgegeben (nur hasToken).
+    if (u.pathname === '/api/settings' && req.method === 'GET') {
+      return webSendJson(res, {
+        tunnelUrl: TUNNEL_URL,
+        tunnelType: TUNNEL_TYPE,
+        tunnelLabel: TUNNEL_LABEL,
+        hasToken: !!TUNNEL_TOKEN,
+        tunnelConnected: !!(tunnel && tunnel.isConnected()),
+      });
+    }
+    if (u.pathname === '/api/settings' && req.method === 'POST') {
+      // Nur gesetzte Felder ändern; fehlende Felder bleiben wie bisher.
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const tunnelUrl = body.tunnelUrl !== undefined ? String(body.tunnelUrl).trim() : TUNNEL_URL;
+      let tunnelToken = String(body.tunnelToken || '').trim();
+      if (!tunnelToken) tunnelToken = TUNNEL_TOKEN; // leer = bestehenden behalten
+      const tunnelType = body.tunnelType !== undefined ? String(body.tunnelType).trim() : TUNNEL_TYPE;
+      const tunnelLabel = body.tunnelLabel !== undefined ? String(body.tunnelLabel).trim() : TUNNEL_LABEL;
+      if (!/^wss?:\/\//.test(tunnelUrl)) throw new Error('tunnelUrl muss mit ws:// oder wss:// beginnen');
+      if (tunnelToken && !/^[0-9a-f]{32,128}$/i.test(tunnelToken)) throw new Error('tunnelToken ungültig (32–128 Hex-Zeichen erwartet)');
+      if (!TUNNEL_TYPES.includes(tunnelType)) throw new Error(`tunnelType ungültig (erlaubt: ${TUNNEL_TYPES.join(', ')})`);
+      const envFile = writeEnvConfig({ tunnelUrl, tunnelToken: tunnelToken ?? undefined, tunnelType, tunnelLabel });
+      TUNNEL_URL = tunnelUrl;
+      TUNNEL_TOKEN = tunnelToken;
+      TUNNEL_TYPE = tunnelType;
+      TUNNEL_LABEL = tunnelLabel;
+      launchTunnel('Einstellungen');
+      log(`  [settings] Konfiguration gespeichert → ${envFile}; Typ=${tunnelType} (${tunnelLabel}), Tunnel neu gestartet → ${tunnelUrl}`);
+      return webSendJson(res, { ok: true, envFile });
     }
     if (u.pathname === '/setup') {
       const fp = path.join(__dirname, 'setup.html');

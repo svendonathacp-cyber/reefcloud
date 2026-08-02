@@ -23,3 +23,6 @@ reef-cloud-anleitung.md
 
 # Flare-Programme (Laufzeitdaten)
 programs/
+
+# Geräte-Spitznamen (Laufzeitdaten)
+names.json
