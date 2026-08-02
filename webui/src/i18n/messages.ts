@@ -190,6 +190,72 @@ export const de = {
   'log.framesInBuffer': '{n} Frames im Puffer',
   'log.captureOff': 'Capture aus — oben rechts aktivieren',
   'log.empty': 'Keine Frames im Puffer.',
+
+  // Einstellungen — Navigation
+  'nav.settings': 'Einstellungen',
+
+  // Einstellungen — Laden / Fehler
+  'settings.loading': 'Einstellungen werden geladen …',
+  'settings.loadError': 'Einstellungen konnten nicht geladen werden ({error}). Die laufende Server-Version kennt /api/settings möglicherweise noch nicht — bitte reef-cloud-v2 aktualisieren und neu starten.',
+  'settings.loadErrorNoDetail': 'Einstellungen konnten nicht geladen werden. Die laufende Server-Version kennt /api/settings möglicherweise noch nicht — bitte reef-cloud-v2 aktualisieren und neu starten.',
+  'settings.retry': 'Erneut versuchen',
+
+  // Einstellungen — Verbindung / Tunnel
+  'settings.connection': 'Verbindung / Tunnel',
+  'settings.status.connected': 'verbunden',
+  'settings.status.disconnected': 'nicht verbunden',
+  'settings.status.target': 'Ziel',
+  'settings.status.unnamed': '(kein Name)',
+  'settings.form.type': 'Ziel-Typ',
+  'settings.form.type.webos': 'WebOS-Server',
+  'settings.form.type.homeassistant': 'HomeAssistant',
+  'settings.form.type.custom': 'Eigener Server',
+  'settings.form.label': 'Anzeigename',
+  'settings.form.labelPlaceholder': 'z. B. Mein Server',
+  'settings.form.url': 'Tunnel-URL',
+  'settings.form.urlHint': 'Muss mit ws:// oder wss:// beginnen.',
+  'settings.form.token': 'Token',
+  'settings.form.tokenSavedPlaceholder': 'gespeichert — leer lassen zum Behalten',
+  'settings.form.tokenEmptyPlaceholder': '32–128 Hex-Zeichen',
+  'settings.form.tokenHint': 'Leer lassen, um das gespeicherte Token zu behalten. Der gespeicherte Wert wird aus Sicherheitsgründen nie angezeigt.',
+  'settings.form.showToken': 'Token anzeigen',
+  'settings.form.hideToken': 'Token verbergen',
+  'settings.validation.url': 'Die Tunnel-URL muss mit ws:// oder wss:// beginnen.',
+  'settings.validation.token': 'Das Token muss aus 32–128 Hex-Zeichen bestehen (0–9, a–f).',
+  'settings.haNote': 'Hinweis: Ein HomeAssistant-spezifisches Event-Mapping folgt später — das Protokoll ist aktuell mit dem des WebOS-Servers identisch.',
+
+  // Einstellungen — Test & Speichern
+  'settings.test': 'Verbindung testen',
+  'settings.testing': 'Teste …',
+  'settings.testNeedsToken': 'Zum Testen bitte das Token eingeben — das gespeicherte Token wird aus Sicherheitsgründen nicht an die Oberfläche geliefert.',
+  'settings.testOk': 'Verbindung erfolgreich',
+  'settings.testFailed': 'Verbindung fehlgeschlagen: {error}',
+  'settings.save': 'Speichern',
+  'settings.saving': 'Speichere …',
+  'settings.saved': 'Einstellungen gespeichert — Tunnel wird neu gestartet',
+  'settings.saveFailed': 'Speichern fehlgeschlagen: {error}',
+
+  // Einstellungen — Anleitungen
+  'settings.guides': 'Anleitungen',
+  'settings.guide.cert.title': 'Zertifikat aufs Handy (iOS/Android)',
+  'settings.guide.cert.desc': 'Das reef-cloud-Zertifikat auf dem Smartphone installieren, damit die App die lokale Cloud akzeptiert.',
+  'settings.guide.dns.title': 'DNS-Rewrite einrichten (mit Live-Test)',
+  'settings.guide.dns.desc': 'DNS so umbiegen, dass die Geräte die lokale Cloud statt der Hersteller-Cloud erreichen — inklusive direktem Test.',
+  'settings.guide.setup.title': 'Setup-Wizard erneut öffnen',
+  'settings.guide.setup.desc': 'Den Ersteinrichtungs-Assistenten noch einmal durchlaufen (URL, Token, Zertifikat).',
+  'settings.guide.open': 'Öffnet in neuem Tab',
+
+  // Einstellungen — Server (read-only)
+  'settings.server': 'Server',
+  'settings.server.cert': 'Zertifikat',
+  'settings.server.validUntil': 'gültig bis {date}',
+  'settings.server.fingerprint': 'SHA-256-Fingerprint',
+  'settings.server.copy': 'Fingerprint kopieren',
+  'settings.server.copied': 'Fingerprint kopiert',
+  'settings.server.copyFailed': 'Kopieren fehlgeschlagen',
+  'settings.server.lanIps': 'LAN-Adressen',
+  'settings.server.noLanIps': 'Keine LAN-Adressen gefunden.',
+  'settings.server.portHint': 'Ports — Web-UI: 8080 · App (TLS): 443 · Geräte (TLS): 444 · Altgeräte (plain): 442/80',
 } as const;
 
 export type MessageKey = keyof typeof de;
@@ -357,4 +423,70 @@ export const en: Record<MessageKey, string> = {
   'log.framesInBuffer': '{n} frames in buffer',
   'log.captureOff': 'Capture off — enable it at the top right',
   'log.empty': 'No frames in buffer.',
+
+  // Settings — navigation
+  'nav.settings': 'Settings',
+
+  // Settings — loading / errors
+  'settings.loading': 'Loading settings …',
+  'settings.loadError': 'Settings could not be loaded ({error}). The running server version may not know /api/settings yet — please update reef-cloud-v2 and restart it.',
+  'settings.loadErrorNoDetail': 'Settings could not be loaded. The running server version may not know /api/settings yet — please update reef-cloud-v2 and restart it.',
+  'settings.retry': 'Try again',
+
+  // Settings — connection / tunnel
+  'settings.connection': 'Connection / Tunnel',
+  'settings.status.connected': 'connected',
+  'settings.status.disconnected': 'not connected',
+  'settings.status.target': 'Target',
+  'settings.status.unnamed': '(no name)',
+  'settings.form.type': 'Target type',
+  'settings.form.type.webos': 'WebOS server',
+  'settings.form.type.homeassistant': 'HomeAssistant',
+  'settings.form.type.custom': 'Custom server',
+  'settings.form.label': 'Display name',
+  'settings.form.labelPlaceholder': 'e.g. My server',
+  'settings.form.url': 'Tunnel URL',
+  'settings.form.urlHint': 'Must start with ws:// or wss://.',
+  'settings.form.token': 'Token',
+  'settings.form.tokenSavedPlaceholder': 'saved — leave empty to keep',
+  'settings.form.tokenEmptyPlaceholder': '32–128 hex characters',
+  'settings.form.tokenHint': 'Leave empty to keep the saved token. The saved value is never shown for security reasons.',
+  'settings.form.showToken': 'Show token',
+  'settings.form.hideToken': 'Hide token',
+  'settings.validation.url': 'The tunnel URL must start with ws:// or wss://.',
+  'settings.validation.token': 'The token must consist of 32–128 hex characters (0–9, a–f).',
+  'settings.haNote': 'Note: HomeAssistant-specific event mapping will follow later — the protocol is currently identical to the WebOS server.',
+
+  // Settings — test & save
+  'settings.test': 'Test connection',
+  'settings.testing': 'Testing …',
+  'settings.testNeedsToken': 'Enter the token to test — the saved token is never sent to the UI for security reasons.',
+  'settings.testOk': 'Connection successful',
+  'settings.testFailed': 'Connection failed: {error}',
+  'settings.save': 'Save',
+  'settings.saving': 'Saving …',
+  'settings.saved': 'Settings saved — tunnel is restarting',
+  'settings.saveFailed': 'Save failed: {error}',
+
+  // Settings — guides
+  'settings.guides': 'Guides',
+  'settings.guide.cert.title': 'Install the certificate on your phone (iOS/Android)',
+  'settings.guide.cert.desc': 'Install the reef-cloud certificate on your smartphone so the app accepts the local cloud.',
+  'settings.guide.dns.title': 'Set up DNS rewrite (with live test)',
+  'settings.guide.dns.desc': 'Redirect DNS so the devices reach the local cloud instead of the vendor cloud — including a direct test.',
+  'settings.guide.setup.title': 'Reopen the setup wizard',
+  'settings.guide.setup.desc': 'Run the initial setup assistant again (URL, token, certificate).',
+  'settings.guide.open': 'Opens in a new tab',
+
+  // Settings — server (read-only)
+  'settings.server': 'Server',
+  'settings.server.cert': 'Certificate',
+  'settings.server.validUntil': 'valid until {date}',
+  'settings.server.fingerprint': 'SHA-256 fingerprint',
+  'settings.server.copy': 'Copy fingerprint',
+  'settings.server.copied': 'Fingerprint copied',
+  'settings.server.copyFailed': 'Copy failed',
+  'settings.server.lanIps': 'LAN addresses',
+  'settings.server.noLanIps': 'No LAN addresses found.',
+  'settings.server.portHint': 'Ports — Web UI: 8080 · App (TLS): 443 · Devices (TLS): 444 · Legacy devices (plain): 442/80',
 };

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { AlertTriangle, LayoutDashboard, ScrollText } from 'lucide-react';
+import { AlertTriangle, LayoutDashboard, ScrollText, Settings as SettingsIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/sonner';
 import { useReef } from '@/hooks/useReef';
 import { useT } from '@/i18n/I18nContext';
 import LanguageWelcome from '@/i18n/LanguageWelcome';
 import type { DeviceSnapshot } from '@/types/reef';
+import Settings from '@/pages/Settings';
 import ReefHeader from '@/sections/ReefHeader';
 import Sidebar from '@/sections/Sidebar';
 import { deviceDisplayName, FAMILY_META } from '@/sections/DeviceCard';
@@ -54,10 +55,14 @@ export default function Home() {
   const t = useT();
   const { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname } = useReef();
   const [selected, setSelected] = useState(() => {
-    // Optionaler Deep-Link: ?dev=<serial> öffnet direkt die Detailansicht
+    // Optionale Deep-Links: ?dev=<serial> öffnet die Detailansicht,
+    // ?view=settings|log|dashboard öffnet direkt eine Hauptansicht
     try {
-      const q = new URLSearchParams(window.location.search).get('dev');
-      if (q && /^[\w-]{1,32}$/.test(q)) return q;
+      const q = new URLSearchParams(window.location.search);
+      const v = q.get('view');
+      if (v === 'settings' || v === 'log' || v === 'dashboard') return v;
+      const dev = q.get('dev');
+      if (dev && /^[\w-]{1,32}$/.test(dev)) return dev;
     } catch { /* ignore */ }
     return 'dashboard';
   });
@@ -66,13 +71,15 @@ export default function Home() {
   const currentDev = devices.find((d) => d.serial === selected);
 
   // Unbekannte Serial (z. B. veralteter ?dev=-Deep-Link) → aufs Dashboard zurückfallen
-  const view = selected === 'log' || currentDev ? selected : 'dashboard';
+  const view = selected === 'log' || selected === 'settings' || currentDev ? selected : 'dashboard';
 
   const title = view === 'dashboard'
     ? t('nav.dashboard')
     : view === 'log'
       ? t('home.logMonitor')
-      : (currentDev ? deviceDisplayName(currentDev) || t('family.unknown') : t('family.unknown'));
+      : view === 'settings'
+        ? t('nav.settings')
+        : (currentDev ? deviceDisplayName(currentDev) || t('family.unknown') : t('family.unknown'));
 
   const grouped = GROUP_KEYS.map((g) => ({
     title: t(g.titleKey),
@@ -104,6 +111,7 @@ export default function Home() {
         <div className="flex gap-2 overflow-x-auto border-b border-border bg-[#0d1526] px-3 py-2 lg:hidden">
           <Chip active={selected === 'dashboard'} onClick={() => setSelected('dashboard')} Icon={LayoutDashboard} label={t('nav.dashboard')} />
           <Chip active={selected === 'log'} onClick={() => setSelected('log')} Icon={ScrollText} label={t('nav.log')} />
+          <Chip active={selected === 'settings'} onClick={() => setSelected('settings')} Icon={SettingsIcon} label={t('nav.settings')} />
           {sorted.map((d) => {
             const meta = FAMILY_META[d.family] ?? FAMILY_META.unknown;
             return <Chip key={d.serial} active={selected === d.serial} onClick={() => setSelected(d.serial)} Icon={meta.Icon} label={deviceDisplayName(d) || t(meta.nameKey)} dim={statusOf(d) !== 'online'} />;
@@ -151,7 +159,8 @@ export default function Home() {
           )}
 
           {view === 'log' && <LogView frames={frames} captureOn={captureOn} />}
-          {view !== 'dashboard' && view !== 'log' && currentDev && <DeviceDetail dev={currentDev} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
+          {view === 'settings' && <Settings />}
+          {view !== 'dashboard' && view !== 'log' && view !== 'settings' && currentDev && <DeviceDetail dev={currentDev} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
         </main>
       </div>
     </div>

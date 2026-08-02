@@ -1,4 +1,4 @@
-import { LayoutDashboard, ScrollText } from 'lucide-react';
+import { LayoutDashboard, ScrollText, Settings as SettingsIcon } from 'lucide-react';
 import { deviceDisplayName, FAMILY_META } from './DeviceCard';
 import { statusOf } from './DeviceTile';
 import { useT } from '@/i18n/I18nContext';
@@ -91,6 +91,11 @@ export default function Sidebar({ devices, selected, onSelect }: Props) {
             </div>
           );
         })}
+      </div>
+
+      {/* Einstellungen fixiert am unteren Rand der Sidebar */}
+      <div className="border-t border-border px-3 py-2">
+        <NavRow id="settings" selected={selected} onSelect={onSelect} Icon={SettingsIcon} label={t('nav.settings')} />
       </div>
     </aside>
   );
