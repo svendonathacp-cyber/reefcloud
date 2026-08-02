@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { useT } from '@/i18n/I18nContext';
 import type { MessageKey } from '@/i18n/messages';
 import type { FlareProgram } from '@/types/reef';
@@ -201,10 +202,11 @@ export default function FlareProgramEditor({ serial }: Props) {
         />
         <div className="flex min-w-56 flex-1 items-center gap-2">
           <span className="whitespace-nowrap text-xs text-muted-foreground">{t('flareEditor.intensity')}</span>
-          <input
-            type="range" min={0} max={100} value={program.intensity}
-            onChange={(e) => mutate((p) => ({ ...p, intensity: Number(e.target.value) }))}
-            className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-amber-100 accent-amber-400"
+          <Slider
+            min={0} max={100} step={1} value={[program.intensity]}
+            onValueChange={([v]) => mutate((p) => ({ ...p, intensity: v }))}
+            aria-label={t('flareEditor.intensity')}
+            className="flex-1"
           />
           <span className="w-10 text-right text-sm font-semibold text-amber-500">{program.intensity} %</span>
         </div>
@@ -295,11 +297,11 @@ export default function FlareProgramEditor({ serial }: Props) {
                 <div key={c.nameKey} className="flex items-center gap-2">
                   <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: c.color }} />
                   <span className="w-14 text-xs text-muted-foreground">{t(c.nameKey)}</span>
-                  <input
-                    type="range" min={0} max={100} value={pct}
-                    onChange={(e) => setChannelValue(ch, Number(e.target.value))}
-                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-100"
-                    style={{ accentColor: c.color }}
+                  <Slider
+                    min={0} max={100} step={1} value={[pct]}
+                    onValueChange={([v]) => setChannelValue(ch, v)}
+                    aria-label={t(c.nameKey)}
+                    className="flex-1"
                   />
                   <span className="w-12 text-right text-xs font-semibold tabular-nums">{pct} %</span>
                 </div>
