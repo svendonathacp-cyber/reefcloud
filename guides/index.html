@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>reef-cloud — Einrichtung in 3 Schritten</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0b1220; color: #dbe4f0; padding: 20px 16px 48px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.55;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  a { color: #9fc1ff; }
+  h1 { font-size: 23px; margin: 0 0 6px; }
+  .sub { color: #8fa3c0; font-size: 14px; margin-bottom: 4px; }
+  .card {
+    background: #121c30; border: 1px solid #22314e; border-radius: 14px;
+    padding: 20px; margin: 16px 0;
+  }
+  p { margin: 8px 0; font-size: 14px; color: #c4d0e2; }
+  code {
+    background: #0b1220; border: 1px solid #22314e; border-radius: 6px;
+    padding: 1px 6px; font-size: 12.5px; color: #ffd479; word-break: break-all;
+  }
+  .why { font-size: 14px; }
+  .stepcard {
+    display: flex; gap: 14px; align-items: flex-start; text-decoration: none;
+    background: #121c30; border: 1px solid #22314e; border-radius: 14px;
+    padding: 18px; margin: 14px 0; color: inherit; transition: border-color .15s;
+  }
+  .stepcard:hover { border-color: #4d7bd6; }
+  .num {
+    flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
+    background: #22314e; color: #9fc1ff; display: flex; align-items: center;
+    justify-content: center; font-weight: 700; font-size: 17px;
+  }
+  .num.done { background: #2f7d4f; color: #eafff2; }
+  .stepcard h2 { margin: 0 0 4px; font-size: 16px; color: #dbe4f0; }
+  .stepcard p { margin: 0; font-size: 13.5px; color: #8fa3c0; }
+  .status { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 600; }
+  .status.open { color: #ffd479; }
+  .status.done { color: #52d273; }
+  .progress { height: 8px; background: #22314e; border-radius: 999px; overflow: hidden; margin: 10px 0 4px; }
+  .progress > div { height: 100%; background: #52d273; width: 0; transition: width .35s; }
+  .progtext { font-size: 12.5px; color: #8fa3c0; }
+  figure { margin: 16px 0 6px; }
+  svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 12.5px; color: #66789a; text-align: center; margin-top: 6px; }
+  .note {
+    background: #12351f; border: 1px solid #2f7d4f; color: #9fe8bd;
+    border-radius: 10px; padding: 12px 14px; font-size: 13.5px; margin: 14px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🐠 reef-cloud — Einrichtung in 3 Schritten</h1>
+  <div class="sub">Damit deine Reef-Factory-App wieder funktioniert — ganz ohne Hersteller-Cloud.</div>
+
+  <div class="card">
+    <p class="why"><strong>Warum ist das nötig?</strong> Der Hersteller deiner Aquarien-Geräte ist insolvent
+    und hat seine Cloud abgeschaltet — die App und die Geräte finden ihren Server deshalb nicht mehr.
+    Dein kleiner Server (z. B. ein Raspberry Pi) spielt ab jetzt selbst die Cloud — aber nur bei dir zu Hause,
+    in deinem eigenen WLAN. Damit Handy und Geräte ihn finden und ihm vertrauen, folgen hier zwei kleine
+    Vorbereitungen und ein Abschluss-Test.</p>
+    <figure>
+      <!-- selbst gezeichnete Illustration: Hersteller-Cloud weg, Pi zu Hause übernimmt -->
+      <svg viewBox="0 0 640 230" role="img" aria-label="Illustration: Die Hersteller-Cloud ist weg, der Raspberry Pi zu Hause übernimmt ihre Aufgabe im eigenen WLAN.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#52d273"/>
+          </marker>
+          <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#66789a"/>
+          </marker>
+        </defs>
+        <!-- Hersteller-Cloud (durchgestrichen) -->
+        <g>
+          <path d="M95 70 a26 26 0 0 1 25-32 a30 30 0 0 1 56-10 a24 24 0 0 1 30 20 a22 22 0 0 1-6 44 l-96 0 a24 24 0 0 1-9-22 z"
+                fill="#16223a" stroke="#2c3f61" stroke-width="2" stroke-dasharray="6 5"/>
+          <text x="150" y="72" text-anchor="middle" font-size="13" fill="#66789a" font-family="system-ui">Hersteller-Cloud</text>
+          <line x1="105" y1="38" x2="195" y2="96" stroke="#e05d5d" stroke-width="5" stroke-linecap="round"/>
+          <line x1="195" y1="38" x2="105" y2="96" stroke="#e05d5d" stroke-width="5" stroke-linecap="round"/>
+          <text x="150" y="118" text-anchor="middle" font-size="11.5" fill="#e05d5d" font-family="system-ui">abgeschaltet</text>
+        </g>
+        <!-- Handy -->
+        <g>
+          <rect x="60" y="150" width="64" height="110" rx="12" fill="#1a2740" stroke="#2c3f61" stroke-width="2" transform="translate(0,-30)"/>
+          <rect x="68" y="166" width="48" height="74" rx="4" fill="#0b1220" transform="translate(0,-30)"/>
+          <text x="92" y="196" text-anchor="middle" font-size="18" transform="translate(0,-30)">🐠</text>
+          <text x="92" y="216" text-anchor="middle" font-size="9.5" fill="#9fc1ff" font-family="system-ui" transform="translate(0,-30)">Reef-App</text>
+          <circle cx="92" cy="220" r="3.5" fill="#2c3f61"/>
+        </g>
+        <!-- Haus mit Pi -->
+        <g>
+          <path d="M430 130 L520 78 L610 130 Z" fill="#22314e" stroke="#2c3f61" stroke-width="2"/>
+          <rect x="448" y="130" width="144" height="80" rx="6" fill="#16223a" stroke="#2c3f61" stroke-width="2"/>
+          <!-- Pi -->
+          <rect x="486" y="150" width="68" height="42" rx="6" fill="#0b1220" stroke="#4d7bd6" stroke-width="2"/>
+          <circle cx="498" cy="162" r="3.5" fill="#52d273"/>
+          <text x="524" y="166" text-anchor="middle" font-size="10.5" fill="#9fc1ff" font-family="system-ui">reef-cloud</text>
+          <text x="520" y="182" text-anchor="middle" font-size="10" fill="#8fa3c0" font-family="system-ui">dein Pi</text>
+          <!-- WLAN-Wellen -->
+          <path d="M566 148 a14 14 0 0 1 0 18" fill="none" stroke="#52d273" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M572 142 a24 24 0 0 1 0 30" fill="none" stroke="#52d273" stroke-width="2.5" stroke-linecap="round" opacity=".65"/>
+          <path d="M578 136 a34 34 0 0 1 0 42" fill="none" stroke="#52d273" stroke-width="2.5" stroke-linecap="round" opacity=".35"/>
+          <text x="520" y="228" text-anchor="middle" font-size="11" fill="#8fa3c0" font-family="system-ui">dein WLAN zu Hause</text>
+        </g>
+        <!-- Verbindungen -->
+        <line x1="196" y1="70" x2="486" y2="150" stroke="#66789a" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrg)" opacity=".5"/>
+        <line x1="130" y1="176" x2="478" y2="176" stroke="#52d273" stroke-width="3" marker-end="url(#arr)"/>
+        <text x="300" y="166" text-anchor="middle" font-size="11.5" fill="#52d273" font-family="system-ui">App &amp; Geräte finden jetzt den Pi</text>
+      </svg>
+      <figcaption>Die alte Cloud ist weg — dein Pi übernimmt, aber nur in deinem Netz.</figcaption>
+    </figure>
+  </div>
+
+  <div class="card">
+    <div class="progtext" id="progLabel">Dein Fortschritt</div>
+    <div class="progress"><div id="progBar"></div></div>
+    <div class="progtext" id="progText">0 von 3 Schritten erledigt</div>
+  </div>
+
+  <a class="stepcard" href="zertifikat.html">
+    <div class="num" id="num1">1</div>
+    <div>
+      <h2>Zertifikat aufs Handy</h2>
+      <p>Dein Handy soll dem Pi vertrauen, damit die verschlüsselte Verbindung klappt.
+         Dauert etwa 2 Minuten — Anleitung für iPhone und Android.</p>
+      <span class="status open" id="st1">○ noch offen</span>
+    </div>
+  </a>
+
+  <a class="stepcard" href="dns.html">
+    <div class="num" id="num2">2</div>
+    <div>
+      <h2>DNS umbiegen</h2>
+      <p>Dein Netzwerk soll die Adresse <code>api.reeffactory.com</code> zu deinem Pi lotsen —
+         mit AdGuard Home, Pi-hole oder Fritz!Box.</p>
+      <span class="status open" id="st2">○ noch offen</span>
+    </div>
+  </a>
+
+  <a class="stepcard" href="dns.html#test">
+    <div class="num" id="num3">3</div>
+    <div>
+      <h2>Fertig-Test</h2>
+      <p>Ein Knopfdruck prüft, ob alles sitzt: Erreichbarkeit des Pi und das Zertifikat.
+         Dann kann die App wieder loslegen.</p>
+      <span class="status open" id="st3">○ noch offen</span>
+    </div>
+  </a>
+
+  <div class="note">
+    💡 <strong>Tipp:</strong> Lies diese Anleitung am besten auf dem Handy, das du einrichtest —
+    die Häkchen und deine Eingaben bleiben auf dem Gerät gespeichert.
+  </div>
+</div>
+
+<script>
+const get = (k) => { try { return localStorage.getItem('reefguide:' + k) === '1'; } catch (e) { return false; } };
+
+// Schritt 1 gilt als erledigt, wenn eine der beiden Plattform-Strecken komplett abgehakt ist.
+const ios = ['zert-ios-dl', 'zert-ios-profil', 'zert-ios-install', 'zert-ios-vertrauen'];
+const and = ['zert-and-dl', 'zert-and-menue', 'zert-and-install', 'zert-and-warnung'];
+const certDone = ios.every(get) || and.every(get);
+const dnsDone = get('dns-eintrag') || get('dns-test-http');
+const testDone = get('dns-test-https');
+
+const steps = [certDone, dnsDone, testDone];
+steps.forEach((done, i) => {
+  const n = document.getElementById('num' + (i + 1));
+  const s = document.getElementById('st' + (i + 1));
+  if (done) {
+    n.classList.add('done'); n.textContent = '✓';
+    s.className = 'status done'; s.textContent = '● erledigt';
+  }
+});
+const count = steps.filter(Boolean).length;
+document.getElementById('progBar').style.width = (count / 3 * 100) + '%';
+document.getElementById('progText').textContent =
+  count === 3 ? '🎉 Alles erledigt — viel Freude mit deinem Riff!'
+              : count + ' von 3 Schritten erledigt';
+</script>
+</body>
+</html>
