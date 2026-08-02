@@ -86,5 +86,27 @@ export function useReef(pollMs = 4000) {
     setTimeout(loadDevices, 600); // Server-Stand zeitnah nachladen
   }, [loadDevices]);
 
-  return { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname };
+  // Geräte-Eigenschaften (Level-Sensor: Alarm-Richtung über/unter).
+  // Server leitet covered sofort neu ab — hier lokal gespiegelt, damit die
+  // Anzeige ohne Poll-Verzögerung umspringt.
+  const setDeviceProps = useCallback(async (serial: string, alarmWhen: 'above' | 'below') => {
+    const r = await fetch('/api/devices/props', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ serial, alarmWhen }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok !== true) throw new Error(j.error || `HTTP ${r.status}`);
+    setDevices((ds) => ds.map((d) => {
+      if (d.serial !== serial) return d;
+      const alarm = d.state.alarm;
+      const covered = alarm === true || alarm === false
+        ? (alarmWhen === 'above' ? alarm : !alarm)
+        : d.state.covered;
+      return { ...d, alarmWhen, state: { ...d.state, covered } };
+    }));
+    setTimeout(loadDevices, 600);
+  }, [loadDevices]);
+
+  return { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname, setDeviceProps };
 }

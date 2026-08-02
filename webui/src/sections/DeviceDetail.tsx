@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Check, Pencil, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { StatusDot, StatusLabel, statusOf } from './DeviceTile';
 import AutolevelSection from './AutolevelSection';
 import FlareProgramEditor from './FlareProgramEditor';
 import { useT } from '@/i18n/I18nContext';
-import type { CommandFn, DeviceSnapshot, SetNicknameFn } from '@/types/reef';
+import type { CommandFn, DeviceSnapshot, SetDevicePropsFn, SetNicknameFn } from '@/types/reef';
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = '—') => (typeof v === 'string' && v ? v : d);
@@ -80,6 +81,11 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
           <BigStat label={t('detail.maxChannel')} value={channels.length ? Math.max(...channels) : 0} unit="%" accent={false} />
         </>
       );
+    }
+    case 'levelSensor': {
+      const covered = dev.state.covered;
+      const label = covered === true ? t('level.above') : covered === false ? t('level.below') : t('level.unknown');
+      return <BigStat label={t('level.statusLabel')} value={label} accent={covered === true || covered === false} />;
     }
     default:
       return null;
@@ -166,10 +172,63 @@ interface Props {
   now: number;
   sendCommand: CommandFn;
   setNickname: SetNicknameFn;
+  setDeviceProps: SetDevicePropsFn;
+}
+
+// Level-Sensor-Detailkarte: großer Wasserstand (covered), darunter klein der
+// Roh-Code + Alarm-Flag, und der Toggle für die geräteseitige Alarm-Richtung
+// (POST /api/devices/props — wirkt sofort, Server leitet covered neu ab).
+function LevelSensorBody({ dev, setDeviceProps }: { dev: DeviceSnapshot; setDeviceProps: SetDevicePropsFn }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const covered = dev.state.covered;
+  const alarm = dev.state.alarm;
+  const code = num(dev.state.code, -1);
+  const alarmWhen = dev.alarmWhen ?? 'above';
+  const label = covered === true ? t('level.above') : covered === false ? t('level.below') : t('level.unknown');
+
+  const setAlarmWhen = async (v: 'above' | 'below') => {
+    if (v === alarmWhen || busy) return;
+    setBusy(true);
+    try {
+      await setDeviceProps(dev.serial, v);
+      toast.success(t('level.propsSaved'));
+    } catch (e) {
+      toast.error(t('common.error', { msg: e instanceof Error ? e.message : String(e) }));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <div className="text-center">
+        <p className={`text-xl font-bold ${covered === true || covered === false ? 'text-[#38bdf8]' : 'text-muted-foreground'}`}>
+          {label}
+        </p>
+        <p className="mt-1.5 flex items-center justify-center gap-2 font-mono text-xs text-muted-foreground">
+          {code >= 0 && t('level.rawCode', { code, alarm: alarm === true || alarm === false ? String(alarm) : '—' })}
+          {alarm === true && <Badge variant="destructive">{t('level.alarm')}</Badge>}
+        </p>
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-border/60 pt-3 text-sm">
+        <span className="text-muted-foreground">{t('level.alarmWhen')}</span>
+        <span className="flex gap-1.5">
+          <Button size="sm" variant={alarmWhen === 'above' ? 'default' : 'outline'} disabled={busy}
+            onClick={() => void setAlarmWhen('above')}>
+            {t('level.alarmWhen.above')}
+          </Button>
+          <Button size="sm" variant={alarmWhen === 'below' ? 'default' : 'outline'} disabled={busy}
+            onClick={() => void setAlarmWhen('below')}>
+            {t('level.alarmWhen.below')}
+          </Button>
+        </span>
+      </div>
+    </>
+  );
 }
 
 // Geräte-Detailseite im Stil der Reef-Factory-Einstellungsseiten
-export default function DeviceDetail({ dev, devices, now, sendCommand, setNickname }: Props) {
+export default function DeviceDetail({ dev, devices, now, sendCommand, setNickname, setDeviceProps }: Props) {
   const t = useT();
   const meta = FAMILY_META[dev.family] ?? FAMILY_META.unknown;
   const { Icon } = meta;
@@ -219,8 +278,9 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
               <FlareProgramEditor serial={dev.serial} />
             </>
           )}
-          {!['basepump', 'wave', 'roller', 'flare'].includes(dev.family) && <GenericBody dev={dev} />}
-          {!hasControls && dev.family !== 'flare' && (
+          {dev.family === 'levelSensor' && <LevelSensorBody dev={dev} setDeviceProps={setDeviceProps} />}
+          {!['basepump', 'wave', 'roller', 'flare', 'levelSensor'].includes(dev.family) && <GenericBody dev={dev} />}
+          {!hasControls && dev.family !== 'flare' && dev.family !== 'levelSensor' && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
               {t('detail.readonlyNote')}
             </p>

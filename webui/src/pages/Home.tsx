@@ -55,7 +55,7 @@ function TileSkeletons() {
 
 export default function Home() {
   const t = useT();
-  const { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname } = useReef();
+  const { devices, now, tunnel, error, loading, captureOn, frames, sendCommand, setCapture, setNickname, setDeviceProps } = useReef();
   const [selected, setSelected] = useState(() => {
     // Optionale Deep-Links: ?dev=<serial> öffnet die Detailansicht,
     // ?view=settings|log|dashboard|onboarding öffnet direkt eine Hauptansicht
@@ -179,7 +179,7 @@ export default function Home() {
           )}
           {view === 'log' && <LogView frames={frames} captureOn={captureOn} />}
           {view === 'settings' && <Settings />}
-          {view !== 'dashboard' && view !== 'log' && view !== 'settings' && view !== 'onboarding' && currentDev && <DeviceDetail dev={currentDev} devices={devices} now={now} sendCommand={sendCommand} setNickname={setNickname} />}
+          {view !== 'dashboard' && view !== 'log' && view !== 'settings' && view !== 'onboarding' && currentDev && <DeviceDetail dev={currentDev} devices={devices} now={now} sendCommand={sendCommand} setNickname={setNickname} setDeviceProps={setDeviceProps} />}
         </main>
       </div>
     </div>
