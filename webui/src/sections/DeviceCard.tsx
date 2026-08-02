@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -195,10 +199,25 @@ function RollerBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Co
         </Button>
       </div>
       <div className="mt-2">
-        <Button size="sm" variant="outline" disabled={!dev.online || busy !== null}
-          onClick={() => { if (window.confirm(t('roller.confirmNewRoll'))) run('newRoll', {}, t('roller.newRoll')); }}>
-          {busy === 'newRoll' ? '…' : t('roller.newRoll')}
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="outline" disabled={!dev.online || busy !== null}>
+              {busy === 'newRoll' ? '…' : t('roller.newRoll')}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('roller.newRoll')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('roller.confirmNewRoll')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void run('newRoll', {}, t('roller.newRoll'))}>
+                {t('common.confirm')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </>
   );

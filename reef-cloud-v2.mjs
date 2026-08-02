@@ -17,6 +17,7 @@ import { parseTankListPayload, generateTankListPayload, newDeviceRecord } from '
 import { startTunnel } from './reef-tunnel.mjs';
 import { ensureCertificate } from './reef-cert.mjs';
 import { createAutolevel } from './reef-autolevel.mjs';
+import { createUpdater } from './reef-updater.mjs';
 import { scanWifiNetworks } from './reef-onboarding.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -890,6 +891,22 @@ const autolevel = createAutolevel({
   dir: __dirname, log, metaFor, devices, buildCommandFrame, encodeFrame, captureFrame,
 });
 
+// Auto-Update über das Git-Repo (siehe reef-updater.mjs): täglicher Check
+// gegen origin/main, Installation nur manuell aus der UI angestoßen.
+const updater = createUpdater({ dir: __dirname, log });
+
+// Self-Exit nach Update/Neustart: erst antworten, dann ~1 s später beenden.
+// Unter systemd (Restart=always, deploy/reef-cloud.service) kommt der Server
+// mit neuem Code zurück; im Dev muss manuell neu gestartet werden (die UI
+// sagt das über autoRestart=false).
+function scheduleSelfExit(reason) {
+  log(`  [system] ${reason} — Server beendet sich in 1 s${process.env.INVOCATION_ID ? ' (systemd startet neu)' : ' (kein systemd: manuell neu starten!)'}`);
+  setTimeout(() => process.exit(0), 1000);
+}
+// Rate-Limit für /api/server/restart: binnen 10 s nach dem letzten Aufruf
+// wird abgelehnt (Doppelklick/UI-Spam).
+let lastRestartAt = 0;
+
 function routeToDevice(serial, buf, fromApp) {
   const dev = devices.get(serial);
   if (dev && dev.readyState === dev.OPEN) { captureFrame(buf, 'out', serial); dev.send(buf); return true; }
@@ -1184,6 +1201,10 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 //   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
 //   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
 //   GET  /api/onboarding/scan → { networks: [{ssid, signal, rfLike}], scannedAt } (WLAN-Scan am Host)
+//   GET  /api/update/status → Update-Status (supported, current, behind, latestMsg, lastCheck, checking, updating, autoRestart)
+//   POST /api/update/check → Update-Check sofort ausführen, Status zurück
+//   POST /api/update/install → Update installieren (nur behind>0): pull --ff-only + npm install, dann Self-Exit
+//   POST /api/server/restart → Server neu starten (Self-Exit; systemd zieht ihn hoch), Rate-Limit 10 s
 //   /*               → statische Dateien aus webui/dist (SPA-Fallback auf index.html)
 const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
 // Flare-Programme (Laufzeitdaten, in .gitignore): programs/<serial>.json
@@ -1487,6 +1508,35 @@ const webServer = http.createServer(async (req, res) => {
     }
     // Laufzeit-Einstellungen des Tunnels (generisch: WebOS, HomeAssistant, Custom).
     // Token wird absichtlich nie zurückgegeben (nur hasToken).
+    if (u.pathname === '/api/update/status' && req.method === 'GET') {
+      return webSendJson(res, updater.status());
+    }
+    if (u.pathname === '/api/update/check' && req.method === 'POST') {
+      // check() wirft nie — Fehler stehen im Status (error)
+      return webSendJson(res, await updater.check());
+    }
+    if (u.pathname === '/api/update/install' && req.method === 'POST') {
+      // 409-artig: parallele Installationen ablehnen; ohne behind>0 gar nicht starten
+      if (updater.status().updating) return webSendJson(res, { ok: false, error: 'Update läuft bereits' }, 409);
+      try {
+        const result = await updater.install(); // wirft bei behind=0 / git-/npm-Fehler
+        webSendJson(res, result);
+        scheduleSelfExit('Update installiert');
+        return;
+      } catch (e) {
+        return webSendJson(res, { ok: false, error: e.message }, 400);
+      }
+    }
+    if (u.pathname === '/api/server/restart' && req.method === 'POST') {
+      if (Date.now() - lastRestartAt < 10_000) {
+        return webSendJson(res, { ok: false, error: 'Gerade erst neu gestartet — bitte ein paar Sekunden warten' }, 429);
+      }
+      lastRestartAt = Date.now();
+      log('  [system] Neustart über Web-UI angefordert');
+      webSendJson(res, { ok: true, restarting: true, autoRestart: updater.status().autoRestart });
+      scheduleSelfExit('Neustart aus den Einstellungen');
+      return;
+    }
     if (u.pathname === '/api/settings' && req.method === 'GET') {
       return webSendJson(res, {
         tunnelUrl: TUNNEL_URL,

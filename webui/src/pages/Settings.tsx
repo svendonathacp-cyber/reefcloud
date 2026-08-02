@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useI18n, useT } from '@/i18n/I18nContext';
+import SystemSection from '@/sections/SystemSection';
 
 type TunnelType = 'webos' | 'homeassistant' | 'custom';
 const TUNNEL_TYPES: TunnelType[] = ['webos', 'homeassistant', 'custom'];
@@ -484,6 +485,9 @@ export default function Settings() {
               </div>
             </section>
           )}
+
+          {/* ===== System (Updates & Neustart) ===== */}
+          <SystemSection />
         </>
       )}
     </div>
