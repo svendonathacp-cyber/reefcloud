@@ -104,13 +104,37 @@ const msg = (kind, text) => { const m = $('msg'); m.className = 'msg ' + kind; m
 async function loadStatus() {
   try {
     const s = await (await fetch('/api/setup/status')).json();
-    $('certLine').innerHTML = s.cert && s.cert.cn
-      ? `Selbst-signiertes Zertifikat aktiv: <code>${s.cert.cn}</code>` +
-        (s.cert.notAfter ? ` (gültig bis ${new Date(s.cert.notAfter).toLocaleDateString('de-DE')})` : '')
-      : 'Zertifikat wird beim ersten Start automatisch erzeugt.';
-    $('ipList').innerHTML = (s.lanIps && s.lanIps.length)
-      ? s.lanIps.map((i) => `<li><code>${i.address}</code> <span style="color:#66789a">(${i.name})</span></li>`).join('')
-      : '<li>Keine LAN-IP gefunden — Netzwerk prüfen.</li>';
+    // Server-Daten werden ausschließlich per textContent/DOM-Knoten gerendert
+    // (kein innerHTML) — verhindert HTML-Injection über cert-/Interface-Felder.
+    const certLine = $('certLine');
+    certLine.textContent = '';
+    if (s.cert && s.cert.cn) {
+      certLine.append('Selbst-signiertes Zertifikat aktiv: ');
+      const cn = document.createElement('code');
+      cn.textContent = s.cert.cn;
+      certLine.append(cn);
+      if (s.cert.notAfter) certLine.append(' (gültig bis ' + new Date(s.cert.notAfter).toLocaleDateString('de-DE') + ')');
+    } else {
+      certLine.textContent = 'Zertifikat wird beim ersten Start automatisch erzeugt.';
+    }
+    const ipList = $('ipList');
+    ipList.textContent = '';
+    if (s.lanIps && s.lanIps.length) {
+      for (const i of s.lanIps) {
+        const li = document.createElement('li');
+        const addr = document.createElement('code');
+        addr.textContent = String(i.address);
+        const name = document.createElement('span');
+        name.style.color = '#66789a';
+        name.textContent = ' (' + String(i.name) + ')';
+        li.append(addr, name);
+        ipList.append(li);
+      }
+    } else {
+      const li = document.createElement('li');
+      li.textContent = 'Keine LAN-IP gefunden — Netzwerk prüfen.';
+      ipList.append(li);
+    }
     $('url').value = s.tunnelUrl || 'wss://donath-home.de/api/reef/tunnel';
     if (s.hasToken) $('token').placeholder = 'Token gespeichert — leer lassen zum Behalten';
   } catch (e) {

@@ -146,13 +146,18 @@ function writeEnvConfig({ tunnelUrl, tunnelToken }) {
     '',
   ];
   const bootPath = '/boot/reef-cloud.env';
+  // mode 0o600: die Datei enthält den Tunnel-Token — nicht lesbar für andere
+  // Benutzer. writeFileSync-mode greift nur bei Neuanlage, daher chmod nachziehen
+  // (bestehende Datei aus früheren Setups hatte umask-Default, typisch 0o644).
   try {
     fs.accessSync('/boot', fs.constants.W_OK);
-    fs.writeFileSync(bootPath, lines.join('\n'));
+    fs.writeFileSync(bootPath, lines.join('\n'), { mode: 0o600 });
+    try { fs.chmodSync(bootPath, 0o600); } catch { /* Windows/andere FS: best effort */ }
     return bootPath;
   } catch { /* kein Pi oder /boot nicht beschreibbar */ }
   const localPath = path.join(__dirname, '.env');
-  fs.writeFileSync(localPath, lines.join('\n'));
+  fs.writeFileSync(localPath, lines.join('\n'), { mode: 0o600 });
+  try { fs.chmodSync(localPath, 0o600); } catch { /* best effort */ }
   return localPath;
 }
 
@@ -714,7 +719,11 @@ function handleDeviceFrame(ws, buf, peer) {
       (now.getFullYear() >> 8) & 255, now.getFullYear() & 255,
       now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(),
     ], f.serial);
-    log(`  → Altgerät ${f.serial} eingeloggt (email=${email}, key=${key}, version=${version})`);
+    // Account-Key maskiert loggen: das Klartext-Log liegt ungeschützt neben
+    // dem Server. E-Mail bleibt sichtbar (Owner-Identifikation im LAN-Kontext),
+    // der Key (Reef-Factory-Account-Geheimnis) nur als Präfix zum Wiedererkennen.
+    const maskedKey = key ? key.slice(0, 2) + '***' : key;
+    log(`  → Altgerät ${f.serial} eingeloggt (email=${email}, key=${maskedKey}, version=${version})`);
     // Altgeräte-Priming: <prefix>Connect/join nachschieben (Payload = serial\0,
     // extra = join_-Tag, exakt wie die App — Original-Mitschnitt 0023). Erst dann
     // starten die Geräte ihre Periodik (z. B. Flare dashboardData alle ~5 s) —
@@ -830,6 +839,9 @@ function createWssServer(port, role, frameHandler, useTls = true) {
   });
   const wss = new WebSocketServer({
     server,
+    // WS-Payload-Limit: echte Geräte-/App-Frames sind wenige KB groß;
+    // der ws-Default (100 MiB) erlaubt Memory-Pressure per Riesenframe.
+    maxPayload: 1 * 1024 * 1024,
     handleProtocols: (protocols) => {
       // Altgeräte bieten 'arduino', neue 'reeffactory', manche nichts — alles annehmen
       if (protocols.has('reeffactory')) return 'reeffactory';
@@ -898,6 +910,10 @@ const WEBUI_DIR = path.join(__dirname, 'webui', 'dist');
 // Flare-Programme (Laufzeitdaten, in .gitignore): programs/<serial>.json
 const PROGRAM_DIR = path.join(__dirname, 'programs');
 
+// Serial-Validierung: <serial> wird als Dateiname programs/<serial>.json
+// verwendet — ohne Einschränkung wäre Path-Traversal über "../../" möglich.
+const isValidSerial = (s) => /^[A-Za-z0-9_-]{1,32}$/.test(s);
+
 function loadProgram(serial) {
   try { return JSON.parse(fs.readFileSync(path.join(PROGRAM_DIR, `${serial}.json`), 'utf8')); }
   catch { return null; }
@@ -938,12 +954,33 @@ function webSendJson(res, obj, code = 200) {
   res.end(JSON.stringify(obj));
 }
 
+// Request-Body-Limit: 1 MB — alle API-Bodies (Kommandos, Programme, Setup)
+// sind Kilobyte-klein; größere Bodies werden als Angriff/Fehler abgelehnt.
+const WEB_BODY_LIMIT = 1 * 1024 * 1024;
+
 function webReadBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
+    let size = 0;
+    let settled = false;
+    // Guard gegen doppeltes Settle ('error' + 'close' können beide feuern)
+    const fail = (err) => { if (!settled) { settled = true; reject(err); } };
+    req.on('data', (c) => {
+      if (settled) return; // Rest verwerfen, bis der Socket zu Ende läuft
+      size += c.length;
+      if (size > WEB_BODY_LIMIT) {
+        chunks.length = 0;
+        fail(new Error(`Request-Body zu groß (Limit ${WEB_BODY_LIMIT / 1024 / 1024} MB)`));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (!settled) { settled = true; resolve(Buffer.concat(chunks).toString('utf8')); }
+    });
+    // Stiller Client-Abbruch ohne 'error'/'end': sonst hängt das await für immer
+    req.on('close', () => fail(new Error('Verbindung vor Ende des Request-Bodys geschlossen')));
+    req.on('error', fail);
   });
 }
 
@@ -989,6 +1026,7 @@ const webServer = http.createServer(async (req, res) => {
       // Write-Format aus einem App-Mitschnitt entschlüsselt ist (live_capture).
       if (req.method === 'GET') {
         const serial = u.searchParams.get('serial') || '';
+        if (!isValidSerial(serial)) throw new Error('serial ungültig ([A-Za-z0-9_-]{1,32} erwartet)');
         // Eigenes gespeichertes Programm hat Vorrang; sonst das echte
         // Lampenprogramm (preciseData), damit der Editor damit vorbefüllt
         const custom = loadProgram(serial);
@@ -1002,7 +1040,7 @@ const webServer = http.createServer(async (req, res) => {
       if (req.method === 'POST') {
         const body = JSON.parse(await webReadBody(req) || '{}');
         const serial = String(body.serial || '');
-        if (!serial) throw new Error('serial fehlt');
+        if (!isValidSerial(serial)) throw new Error('serial ungültig ([A-Za-z0-9_-]{1,32} erwartet)');
         const program = sanitizeProgram(body.program);
         fs.mkdirSync(PROGRAM_DIR, { recursive: true });
         fs.writeFileSync(path.join(PROGRAM_DIR, `${serial}.json`), JSON.stringify(program));
@@ -1088,7 +1126,9 @@ const webServer = http.createServer(async (req, res) => {
       } catch { /* fällt auf index.html zurück */ }
     }
     const fp = path.normalize(path.join(WEBUI_DIR, rel));
-    if (!fp.startsWith(WEBUI_DIR)) { res.writeHead(403); res.end(); return; }
+    // Guard mit Separator bzw. exakter Gleichheit: ein Geschwister-Verzeichnis
+    // mit gemeinsamem Präfix (z. B. webui/dist-evil) darf nicht durchrutschen.
+    if (fp !== WEBUI_DIR && !fp.startsWith(WEBUI_DIR + path.sep)) { res.writeHead(403); res.end(); return; }
     fs.readFile(fp, (err, data) => {
       if (err) {
         fs.readFile(path.join(WEBUI_DIR, 'index.html'), (e2, idx) => {

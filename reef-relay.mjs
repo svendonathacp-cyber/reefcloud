@@ -93,6 +93,7 @@ function createRelayServer(port, plain = false) {
 
   const wss = new WebSocketServer({
     server,
+    maxPayload: 1 * 1024 * 1024,
     handleProtocols: (protocols) => {
       log(`  [Port ${port}] Client bietet Subprotokolle: ${[...protocols].join(', ') || '(keine)'}`);
       if (protocols.has('reeffactory')) return 'reeffactory';
