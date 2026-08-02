@@ -19,6 +19,7 @@ import { ensureCertificate } from './reef-cert.mjs';
 import { createAutolevel } from './reef-autolevel.mjs';
 import { createUpdater } from './reef-updater.mjs';
 import { scanWifiNetworks } from './reef-onboarding.mjs';
+import { parseSgSettings51, sgCalibrateTempPayload, SG_CALIBRATE_MAIN_PAYLOAD } from './reef-salinity.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -622,8 +623,7 @@ function updateState(serial, cls, method, payloadBuf) {
   }
   // 2b) Altgeräte: Binär-Layouts (Level-Sensor, Thermo, Salinity, Level-Keeper)
   // Layouts aus Live-Captures entschlüsselt (Doku §5c). KEIN NUL-Strip hier —
-  // die Altgeräte hängen kein NUL an. Nur exakt bekannte Längen parsen,
-  // unkalibrierte Varianten (z. B. sgRefresh/settings mit 51 B) bewusst ignorieren.
+  // die Altgeräte hängen kein NUL an. Nur exakt bekannte Längen parsen.
   let altParsed = null;
   {
     const pl = payloadBuf;
@@ -679,9 +679,19 @@ function updateState(serial, cls, method, payloadBuf) {
           ? { temperatureC: Math.round(raw / 10) / 100 }
           : { thermoRaw: raw };
       }
+    } else if (cls === 'sgRefresh' && method === 'alert' && pl.length === 7) {
+      // 7-B-Alarmframe: Bedeutung nicht entschlüsselt → wie lsRefresh/alert
+      // still akzeptieren, kein State daraus ableiten.
+      return;
     } else if (cls === 'sgRefresh' && method === 'settings' && pl.length === 4) {
-      // u32BE / 100 → °C (0x0000088b = 21,87 °C). 51-B-Variante: nicht kalibriert → ignorieren.
+      // u32BE / 100 → °C (0x0000088b = 21,87 °C).
       altParsed = { temperatureC: pl.readUInt32BE(0) / 100 };
+    } else if (cls === 'sgRefresh' && method === 'settings' && pl.length === 51) {
+      // Lang-Layout (51 B, Live-Capture RFSG012401300020): rohe Leitfähigkeit,
+      // Alarm-Paare je Einheit, Temperatur, Temp-Kalibrier-Offset + abgeleitete
+      // Werte (Leitfähigkeit@25 °C, Salinität PSS-78, Dichte). Parser und
+      // Formeln (1:1 aus dem Geräte-JS) in reef-salinity.mjs.
+      altParsed = parseSgSettings51(pl);
     } else if (cls === 'lkRefresh' && method === 'settings' && pl.length >= 34) {
       altParsed = {
         mode: pl[0],
@@ -818,6 +828,30 @@ function buildCommandFrame(serial, action, params) {
       const type = Number(params.type ?? (params.mode === 'auto' ? 1 : 0));
       return ['srSet', 'mode', latin1(JSON.stringify({ type: type === 1 ? 1 : 0 }))];
     }
+    case 'salinity:calibrateTemp': {
+      // sgSet/calibrationTemperature: Referenztemperatur °C als s32BE ×10000
+      // (Geräte-JS: Math.round(°C × 1e4)). Nur mit Referenzthermometer sinnvoll.
+      const tempC = Number(params.temperature);
+      if (!Number.isFinite(tempC) || tempC < 0 || tempC > 40) {
+        throw new Error('Referenztemperatur außerhalb 0–40 °C');
+      }
+      return ['sgSet', 'calibrationTemperature', sgCalibrateTempPayload(tempC)];
+    }
+    case 'salinity:calibrateMain':
+      // sgSet/calibrationMain: 1 Byte 0x00 (Geräte-JS: Uint8Array mit e[0]=0).
+      // Nur mit Referenzlösung — die Sonde muss darin liegen!
+      return ['sgSet', 'calibrationMain', SG_CALIBRATE_MAIN_PAYLOAD];
+    case 'salinity:unit': {
+      // sgSet/unitSalinity: 1 Byte Einheit-Index (Geräte-JS: 255 & T).
+      // Vorbereitet, UI folgt (hat bewusst noch keinen UI-Aufrufer).
+      const idx = Number(params.index);
+      if (!Number.isInteger(idx) || idx < 0 || idx > 3) throw new Error('unit index 0–3 erwartet');
+      return ['sgSet', 'unitSalinity', [idx & 255]];
+    }
+    case 'salinity:sound':
+      // sgSound/on|off ohne Payload (Geräte-JS: send mit void 0).
+      // Vorbereitet, UI folgt (hat bewusst noch keinen UI-Aufrufer).
+      return ['sgSound', onOff(params.on) ? 'on' : 'off', []];
     default:
       throw new Error(`unknown action ${action} für family ${fam}`);
   }

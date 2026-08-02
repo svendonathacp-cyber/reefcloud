@@ -8,6 +8,7 @@ const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) 
 const str = (v: unknown, d = '—') => (typeof v === 'string' && v ? v : d);
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+const fmt1 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '—');
 
 export type DeviceStatus = 'online' | 'reachable' | 'offline';
 
@@ -98,6 +99,27 @@ function TileValues({ dev }: { dev: DeviceSnapshot }) {
       <div className="flex items-end justify-between gap-3">
         <BigValue value={num(dev.state.ledTempC)} unit="°C" label={t('detail.temperature')} color={meta.color} />
         <p className="pb-0.5 text-[11px] text-muted-foreground">{on ? t('flare.lightOn') : t('flare.lightOff')}</p>
+      </div>
+    );
+  }
+
+  if (dev.family === 'salinity') {
+    // Große Salinität (ppt), klein Leitfähigkeit@25 °C + Temperatur. Roh- und
+    // unbekannte Werte (rawH, tempOffsetC, d1-/d2-Paare) bleiben der
+    // Detailansicht vorbehalten.
+    const sal = num(dev.state.salinityPpt, NaN);
+    return (
+      <div className="flex items-end justify-between gap-3">
+        <BigValue
+          value={Number.isFinite(sal) ? sal.toFixed(1) : '—'}
+          unit="ppt"
+          label={t('salinity.salinity')}
+          color={meta.color}
+        />
+        <div className="pb-0.5 text-right text-[11px] leading-snug text-muted-foreground">
+          <p>{fmt1(dev.state.conductivityMs25)} mS/cm</p>
+          <p>{fmt1(dev.state.temperatureC)} °C</p>
+        </div>
       </div>
     );
   }

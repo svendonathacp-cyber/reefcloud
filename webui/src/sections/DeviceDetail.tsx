@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Check, Pencil, X } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -86,6 +90,16 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
       const covered = dev.state.covered;
       const label = covered === true ? t('level.above') : covered === false ? t('level.below') : t('level.unknown');
       return <BigStat label={t('level.statusLabel')} value={label} accent={covered === true || covered === false} />;
+    }
+    case 'salinity': {
+      const fmt = (v: unknown, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—');
+      return (
+        <>
+          <BigStat label={t('salinity.conductivity25')} value={fmt(dev.state.conductivityMs25)} unit="mS/cm" />
+          <BigStat label={t('salinity.salinity')} value={fmt(dev.state.salinityPpt)} unit="ppt" />
+          <BigStat label={t('detail.temperature')} value={fmt(dev.state.temperatureC)} unit="°C" />
+        </>
+      );
     }
     default:
       return null;
@@ -227,6 +241,140 @@ function LevelSensorBody({ dev, setDeviceProps }: { dev: DeviceSnapshot; setDevi
   );
 }
 
+// Salinity-Guardian-Detailkarte: sekundär rohe Leitfähigkeit + relative Dichte
+// (densityRel ≈ kg/L, keine Einheit in der Anzeige), klein die Alarm-Bereiche
+// (Paare roh, Zuordnung unklar) und die Kalibrierung mit Bestätigungsdialogen.
+// Roh-/unbekannte Werte (rawH, d1-/d2-Paare) werden bewusst NICHT prominent
+// gezeigt. Aktionen laufen über die normale
+// /api/command-Strecke (sendCommand → buildCommandFrame: sgSet/…).
+function SalinityBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: CommandFn }) {
+  const t = useT();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [refTemp, setRefTemp] = useState('');
+  const fmt = (v: unknown, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—');
+  const alarms = obj(dev.state.alarms);
+  const pairTxt = (v: unknown, d = 1) =>
+    Array.isArray(v) && v.length === 2 && v.every((x) => typeof x === 'number' && Number.isFinite(x))
+      ? `${(v[0] as number).toFixed(d)} / ${(v[1] as number).toFixed(d)}`
+      : '—';
+
+  const run = async (action: string, params: Record<string, unknown>, label: string) => {
+    setBusy(action);
+    try {
+      await sendCommand(dev.serial, action, params);
+      toast.success(label);
+    } catch (e) {
+      toast.error(t('common.error', { msg: e instanceof Error ? e.message : String(e) }));
+    }
+    setBusy(null);
+  };
+
+  const tempValid = () => {
+    const v = Number(String(refTemp).replace(',', '.'));
+    return Number.isFinite(v) && v >= 0 && v <= 40 ? v : null;
+  };
+
+  return (
+    <>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">{t('salinity.conductivityRaw')}</span>
+          <span className="font-mono">{fmt(dev.state.conductivityMs, 2)} mS/cm</span>
+        </div>
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">{t('salinity.density')}</span>
+          <span className="font-mono">{fmt(dev.state.densityRel, 4)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">{t('salinity.tempOffset')}</span>
+          <span className="font-mono">{fmt(dev.state.tempOffsetC, 2)} °C</span>
+        </div>
+      </div>
+
+      <div className="mt-3 border-t border-border/60 pt-3">
+        <p className="text-xs text-muted-foreground">{t('salinity.alarms')}</p>
+        <p className="mt-1 font-mono text-xs">
+          ppt: {pairTxt(alarms.ppt)} · mS/cm: {pairTxt(alarms.msCm)}
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground/70">{t('salinity.alarmsRawNote')}</p>
+      </div>
+
+      <div className="mt-4 border-t border-border/60 pt-3">
+        <p className="text-sm text-muted-foreground">{t('salinity.calibration')}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <AlertDialog onOpenChange={(open) => {
+            if (open) {
+              const cur = dev.state.temperatureC;
+              setRefTemp(typeof cur === 'number' && Number.isFinite(cur) ? cur.toFixed(1) : '');
+            }
+          }}>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" disabled={!dev.online || busy !== null}>
+                {busy === 'calibrateTemp' ? '…' : t('salinity.calibrateTemp')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('salinity.calibrateTemp')}</AlertDialogTitle>
+                <AlertDialogDescription>{t('salinity.calibrateTemp.desc')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="space-y-1.5">
+                <label htmlFor="sg-ref-temp" className="text-sm text-muted-foreground">
+                  {t('salinity.calibrateTemp.refLabel')}
+                </label>
+                <Input
+                  id="sg-ref-temp"
+                  inputMode="decimal"
+                  value={refTemp}
+                  onChange={(e) => setRefTemp(e.target.value)}
+                  className="w-40"
+                />
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    const v = tempValid();
+                    if (v === null) {
+                      e.preventDefault();
+                      toast.error(t('salinity.calibrateTemp.invalid'));
+                      return;
+                    }
+                    void run('calibrateTemp', { temperature: v }, t('salinity.calibrationSent'));
+                  }}
+                >
+                  {t('common.confirm')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" disabled={!dev.online || busy !== null}
+                className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300">
+                {busy === 'calibrateMain' ? '…' : t('salinity.calibrateMain')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('salinity.calibrateMain')}</AlertDialogTitle>
+                <AlertDialogDescription>{t('salinity.calibrateMain.desc')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void run('calibrateMain', {}, t('salinity.calibrationSent'))}>
+                  {t('common.confirm')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // Geräte-Detailseite im Stil der Reef-Factory-Einstellungsseiten
 export default function DeviceDetail({ dev, devices, now, sendCommand, setNickname, setDeviceProps }: Props) {
   const t = useT();
@@ -279,8 +427,9 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
             </>
           )}
           {dev.family === 'levelSensor' && <LevelSensorBody dev={dev} setDeviceProps={setDeviceProps} />}
-          {!['basepump', 'wave', 'roller', 'flare', 'levelSensor'].includes(dev.family) && <GenericBody dev={dev} />}
-          {!hasControls && dev.family !== 'flare' && dev.family !== 'levelSensor' && (
+          {dev.family === 'salinity' && <SalinityBody dev={dev} sendCommand={sendCommand} />}
+          {!['basepump', 'wave', 'roller', 'flare', 'levelSensor', 'salinity'].includes(dev.family) && <GenericBody dev={dev} />}
+          {!hasControls && !['flare', 'levelSensor', 'salinity'].includes(dev.family) && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
               {t('detail.readonlyNote')}
             </p>

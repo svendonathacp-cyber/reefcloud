@@ -299,6 +299,23 @@ export const de = {
   'level.alarmWhen.below': 'unter',
   'level.propsSaved': 'Alarm-Richtung gespeichert',
 
+  // Salinity Guardian (51-B-Layout, Werte aus reef-salinity.mjs)
+  'salinity.salinity': 'Salinität',
+  'salinity.conductivity25': 'Leitfähigkeit @25 °C',
+  'salinity.conductivityRaw': 'Leitfähigkeit (roh)',
+  'salinity.density': 'Dichte', // relative Dichte (densityRel ≈ kg/L, 1,02x) — Anzeige bewusst ohne Einheit
+  'salinity.tempOffset': 'Temp.-Offset',
+  'salinity.alarms': 'Alarm-Bereiche',
+  'salinity.alarmsRawNote': 'Grenzwert-Paare roh vom Gerät (Zuordnung unten/oben nicht verifiziert)',
+  'salinity.calibration': 'Kalibrierung',
+  'salinity.calibrateTemp': 'Temperatur kalibrieren',
+  'salinity.calibrateTemp.desc': 'Temperatur des Beckenwassers mit einem Referenzthermometer messen und hier eintragen. Der gemessene Wert wird als neue Referenz an das Gerät gesendet.',
+  'salinity.calibrateTemp.refLabel': 'Referenztemperatur (°C)',
+  'salinity.calibrateTemp.invalid': 'Bitte eine Temperatur zwischen 0 und 40 °C eingeben.',
+  'salinity.calibrateMain': 'Hauptkalibrierung starten',
+  'salinity.calibrateMain.desc': 'WARNUNG: Nur mit Referenzlösung durchführen — die Sonde muss dabei in der Referenzlösung liegen. Die Hauptkalibrierung verstellt den Messwert dauerhaft.',
+  'salinity.calibrationSent': 'Kalibrierung an das Gerät gesendet',
+
   // Ablaufschacht-Stabilisierung (Autolevel)
   'autolevel.title': 'Ablaufschacht-Stabilisierung',
   'autolevel.description': 'Regelt die Pumpenstärke anhand der Level-Sensoren im Ablaufschacht automatisch nach.',
@@ -673,6 +690,23 @@ export const en: Record<MessageKey, string> = {
   'level.alarmWhen.above': 'above',
   'level.alarmWhen.below': 'below',
   'level.propsSaved': 'Alarm direction saved',
+
+  // Salinity guardian (51-byte layout, values from reef-salinity.mjs)
+  'salinity.salinity': 'Salinity',
+  'salinity.conductivity25': 'Conductivity @25 °C',
+  'salinity.conductivityRaw': 'Conductivity (raw)',
+  'salinity.density': 'Density',
+  'salinity.tempOffset': 'Temp. offset',
+  'salinity.alarms': 'Alarm ranges',
+  'salinity.alarmsRawNote': 'Threshold pairs raw from the device (low/high assignment not verified)',
+  'salinity.calibration': 'Calibration',
+  'salinity.calibrateTemp': 'Calibrate temperature',
+  'salinity.calibrateTemp.desc': 'Measure the tank water temperature with a reference thermometer and enter it here. The measured value is sent to the device as the new reference.',
+  'salinity.calibrateTemp.refLabel': 'Reference temperature (°C)',
+  'salinity.calibrateTemp.invalid': 'Please enter a temperature between 0 and 40 °C.',
+  'salinity.calibrateMain': 'Start main calibration',
+  'salinity.calibrateMain.desc': 'WARNING: Only perform with reference solution — the probe must be placed in the reference solution. The main calibration permanently adjusts the measured value.',
+  'salinity.calibrationSent': 'Calibration sent to the device',
 
   // Overflow shaft stabilization (Autolevel)
   'autolevel.title': 'Overflow Shaft Stabilization',
