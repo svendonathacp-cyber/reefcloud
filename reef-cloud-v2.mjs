@@ -938,11 +938,27 @@ function webSendJson(res, obj, code = 200) {
   res.end(JSON.stringify(obj));
 }
 
+// Request-Body-Limit: 1 MB — alle API-Bodies (Kommandos, Programme, Setup)
+// sind Kilobyte-klein; größere Bodies werden als Angriff/Fehler abgelehnt.
+const WEB_BODY_LIMIT = 1 * 1024 * 1024;
+
 function webReadBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    let size = 0;
+    let tooBig = false;
+    req.on('data', (c) => {
+      if (tooBig) return; // Rest verwerfen, bis der Socket zu Ende läuft
+      size += c.length;
+      if (size > WEB_BODY_LIMIT) {
+        tooBig = true;
+        chunks.length = 0;
+        reject(new Error(`Request-Body zu groß (Limit ${WEB_BODY_LIMIT / 1024 / 1024} MB)`));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => { if (!tooBig) resolve(Buffer.concat(chunks).toString('utf8')); });
     req.on('error', reject);
   });
 }
