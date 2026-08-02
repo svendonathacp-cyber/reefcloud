@@ -74,6 +74,14 @@ extrahieren (siehe Quickstart).
 Voraussetzungen: Node.js ≥ 18, ein Host mit fester IP im Heimnetz, DNS-Rewrite-
 Möglichkeit (z. B. AdGuard Home, Pi-hole, Router).
 
+**Raspberry Pi:** Für Pi OS Lite (64-bit) gibt es ein fertiges
+Install-Skript — es installiert Node.js, klont das Repo nach
+`/opt/reefcloud`, setzt die Zeitzone und richtet den Dienst als
+systemd-Unit ein:
+`curl -fsSL https://raw.githubusercontent.com/svendonathacp-cyber/reefcloud/main/deploy/install.sh | sudo bash`
+Details und die sichere Variante (Skript erst lesen, dann ausführen) stehen
+in [docs/pi-installation.md](docs/pi-installation.md).
+
 1. **Mitschnitt anfertigen** (einmalig, liefert `dumps/`): Phase-1-Logger
    `reef-cloud.mjs` starten, DNS-Rewrite auf diesen Host, Gerät stromlos
    machen → Login und Reports landen als Dateien in `dumps/`.

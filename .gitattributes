@@ -1,0 +1,4 @@
+# Shell-Skripte und systemd-Units muessen mit LF ausgeliefert werden —
+# CRLF wuerde bash auf dem Pi brechen (z. B. beim Checkout unter Windows).
+*.sh        text eol=lf
+*.service   text eol=lf
