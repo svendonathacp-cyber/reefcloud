@@ -13,9 +13,17 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   .card {
+    position: relative;
     width: 100%; max-width: 560px; background: #121c30; border: 1px solid #22314e;
     border-radius: 14px; padding: 28px 28px 24px;
   }
+  .langs { position: absolute; top: 14px; right: 16px; display: flex; gap: 4px; }
+  .langs button {
+    flex: none; background: none; border: 1px solid transparent; border-radius: 6px;
+    font-size: 18px; padding: 2px 6px; cursor: pointer; opacity: .45;
+  }
+  .langs button:hover { opacity: .8; }
+  .langs button.active { opacity: 1; border-color: #4d7bd6; background: #0b1220; }
   h1 { margin: 0 0 4px; font-size: 22px; }
   .sub { color: #8fa3c0; font-size: 14px; margin-bottom: 20px; }
   .step { border-top: 1px solid #22314e; padding: 16px 0; }
@@ -53,40 +61,39 @@
 </head>
 <body>
 <div class="card">
-  <h1>🐠 reef-cloud — Ersteinrichtung</h1>
-  <div class="sub">Lokale Cloud für deine Reef-Factory-Geräte</div>
+  <div class="langs">
+    <button id="langDe" title="Deutsch">🇩🇪</button>
+    <button id="langEn" title="English">🇬🇧</button>
+  </div>
+  <h1 data-i18n="title">🐠 reef-cloud — Ersteinrichtung</h1>
+  <div class="sub" data-i18n="sub">Lokale Cloud für deine Reef-Factory-Geräte</div>
 
   <div class="step">
-    <h2>1 · TLS-Zertifikat <span class="ok-dot">✓</span></h2>
-    <p id="certLine">Wird geprüft …</p>
+    <h2><span data-i18n="step1">1 · TLS-Zertifikat</span> <span class="ok-dot">✓</span></h2>
+    <p id="certLine">…</p>
   </div>
 
   <div class="step">
-    <h2>2 · DNS auf diesen Server zeigen lassen</h2>
-    <p>Damit die Geräte hier statt in der echten Cloud landen, braucht es einen
-       DNS-Rewrite für <code>api.reeffactory.com</code> auf die IP dieses Servers:</p>
-    <ul id="ipList"><li>Ermittle IPs …</li></ul>
-    <p>Bei AdGuard Home: <em>Filter → DNS-Umschreibungen → hinzufügen</em> —
-       Domain <code>api.reeffactory.com</code>, Ziel-IP von oben.
-       Ports <code>443</code>, <code>444</code>, <code>442</code> und <code>80</code> müssen eingehend offen sein.</p>
+    <h2 data-i18n="step2">2 · DNS auf diesen Server zeigen lassen</h2>
+    <p data-i18n="dns1">Damit die Geräte hier statt in der echten Cloud landen, braucht es einen DNS-Rewrite auf die IP dieses Servers:</p>
+    <ul id="ipList"></ul>
+    <p data-i18n="dns2">Bei AdGuard Home: Filter → DNS-Umschreibungen → hinzufügen — Domain und Ziel-IP von oben. Die Ports müssen eingehend offen sein.</p>
   </div>
 
   <div class="step">
     <details id="tunnelDetails">
       <summary>
-        <h2 style="display:inline">3 · Tunnel zu einem externen Server <span style="color:#8fa3c0; font-weight:400">(optional)</span></h2>
-        <p style="margin:4px 0 0">Nur nötig, wenn du reef-cloud mit einem eigenen Server (z. B. WebOS,
-           HomeAssistant) verbinden willst — rein lokaler Betrieb braucht das nicht.
-           <em>Zum Konfigurieren aufklappen.</em></p>
+        <h2 style="display:inline"><span data-i18n="step3">3 · Tunnel zu einem externen Server</span> <span style="color:#8fa3c0; font-weight:400" data-i18n="optional">(optional)</span></h2>
+        <p style="margin:4px 0 0" data-i18n="tunnelHint">Nur nötig, wenn du reef-cloud mit einem eigenen Server (z. B. WebOS, HomeAssistant) verbinden willst — rein lokaler Betrieb braucht das nicht. Zum Konfigurieren aufklappen.</p>
       </summary>
       <div style="margin-top:12px">
-        <label for="url">Tunnel-URL</label>
+        <label for="url" data-i18n="tunnelUrl">Tunnel-URL</label>
         <input id="url" spellcheck="false" placeholder="wss://dein-server.example/tunnel-pfad">
-        <label for="token">Tunnel-Token</label>
-        <input id="token" type="password" spellcheck="false" placeholder="64-stelliger Hex-Token">
+        <label for="token" data-i18n="tunnelToken">Tunnel-Token</label>
+        <input id="token" type="password" spellcheck="false">
         <div class="row">
-          <button id="testBtn">Verbindung testen</button>
-          <button id="saveBtn">Speichern &amp; starten</button>
+          <button id="testBtn" data-i18n="test">Verbindung testen</button>
+          <button id="saveBtn" data-i18n="save">Speichern &amp; starten</button>
         </div>
         <div id="msg" class="msg"></div>
       </div>
@@ -95,13 +102,13 @@
 
   <div class="step done" id="done">
     <div class="big">🎉</div>
-    <p>Einrichtung abgeschlossen und Tunnel gestartet.</p>
-    <p><a href="/">→ Weiter zum Dashboard</a> (Seite ggf. neu laden)</p>
+    <p data-i18n="doneText">Einrichtung abgeschlossen und Tunnel gestartet.</p>
+    <p><a href="/" data-i18n="doneLink">→ Weiter zum Dashboard</a> <span data-i18n="doneReload">(Seite ggf. neu laden)</span></p>
   </div>
 
   <div class="step" style="border-bottom:0; padding-bottom:0">
-    <p style="color:#66789a">Überspringen? Ohne Token läuft reef-cloud rein lokal —
-       <a href="/">direkt zum Dashboard</a>. Der Wizard erscheint beim nächsten Start erneut.</p>
+    <p style="color:#66789a"><span data-i18n="skip">Überspringen? Ohne Token läuft reef-cloud rein lokal —</span>
+       <a href="/" data-i18n="skipLink">direkt zum Dashboard</a>. <span data-i18n="skipNote">Der Wizard erscheint beim nächsten Start erneut.</span></p>
   </div>
 </div>
 
@@ -109,7 +116,120 @@
 const $ = (id) => document.getElementById(id);
 const msg = (kind, text) => { const m = $('msg'); m.className = 'msg ' + kind; m.textContent = text; };
 
+// ---------- i18n (teilt 'reefcloud.lang' mit der Haupt-UI) ----------
+const I18N = {
+  de: {
+    title: '🐠 reef-cloud — Ersteinrichtung',
+    sub: 'Lokale Cloud für deine Reef-Factory-Geräte',
+    step1: '1 · TLS-Zertifikat',
+    certChecking: 'Wird geprüft …',
+    certActive: 'Selbst-signiertes Zertifikat aktiv: ',
+    certValid: ' (gültig bis {date})',
+    certCreated: 'Zertifikat wird beim ersten Start automatisch erzeugt.',
+    step2: '2 · DNS auf diesen Server zeigen lassen',
+    dns1: 'Damit die Geräte hier statt in der echten Cloud landen, braucht es einen DNS-Rewrite für api.reeffactory.com auf die IP dieses Servers:',
+    dns2: 'Bei AdGuard Home: Filter → DNS-Umschreibungen → hinzufügen — Domain api.reeffactory.com, Ziel-IP von oben. Ports 443, 444, 442 und 80 müssen eingehend offen sein.',
+    ipsDetecting: 'Ermittle IPs …',
+    ipsNone: 'Keine LAN-IP gefunden — Netzwerk prüfen.',
+    step3: '3 · Tunnel zu einem externen Server',
+    optional: '(optional)',
+    tunnelHint: 'Nur nötig, wenn du reef-cloud mit einem eigenen Server (z. B. WebOS, HomeAssistant) verbinden willst — rein lokaler Betrieb braucht das nicht. Zum Konfigurieren aufklappen.',
+    tunnelUrl: 'Tunnel-URL',
+    tunnelToken: 'Tunnel-Token',
+    tokenPlaceholder: '64-stelliger Hex-Token',
+    tokenSaved: 'Token gespeichert — leer lassen zum Behalten',
+    test: 'Verbindung testen',
+    save: 'Speichern & starten',
+    testing: 'Teste Verbindung …',
+    testOk: '✅ Verbindung erfolgreich — Server hat den Token akzeptiert.',
+    testFail: 'Verbindung fehlgeschlagen',
+    saving: 'Speichere und starte Tunnel …',
+    saveFail: 'Speichern fehlgeschlagen',
+    savedPrefix: '✅ Gespeichert ',
+    tunnelConnected: 'Tunnel verbunden.',
+    tunnelStarting: 'Tunnel startet — verbindet gleich automatisch.',
+    doneText: 'Einrichtung abgeschlossen und Tunnel gestartet.',
+    doneLink: '→ Weiter zum Dashboard',
+    doneReload: '(Seite ggf. neu laden)',
+    skip: 'Überspringen? Ohne Token läuft reef-cloud rein lokal —',
+    skipLink: 'direkt zum Dashboard',
+    skipNote: 'Der Wizard erscheint beim nächsten Start erneut.',
+    statusError: 'Status konnte nicht geladen werden: ',
+  },
+  en: {
+    title: '🐠 reef-cloud — Initial setup',
+    sub: 'Local cloud for your Reef Factory devices',
+    step1: '1 · TLS certificate',
+    certChecking: 'Checking …',
+    certActive: 'Self-signed certificate active: ',
+    certValid: ' (valid until {date})',
+    certCreated: 'The certificate is generated automatically on first start.',
+    step2: '2 · Point DNS to this server',
+    dns1: 'So your devices land here instead of the real cloud, you need a DNS rewrite for api.reeffactory.com to this server’s IP:',
+    dns2: 'In AdGuard Home: Filters → DNS rewrites → add — domain api.reeffactory.com, target IP from above. Ports 443, 444, 442 and 80 must be open inbound.',
+    ipsDetecting: 'Detecting IPs …',
+    ipsNone: 'No LAN IP found — check the network.',
+    step3: '3 · Tunnel to an external server',
+    optional: '(optional)',
+    tunnelHint: 'Only needed if you want to connect reef-cloud to your own server (e.g. WebOS, HomeAssistant) — purely local operation does not need it. Expand to configure.',
+    tunnelUrl: 'Tunnel URL',
+    tunnelToken: 'Tunnel token',
+    tokenPlaceholder: '64-character hex token',
+    tokenSaved: 'Token saved — leave empty to keep it',
+    test: 'Test connection',
+    save: 'Save & start',
+    testing: 'Testing connection …',
+    testOk: '✅ Connection successful — the server accepted the token.',
+    testFail: 'Connection failed',
+    saving: 'Saving and starting tunnel …',
+    saveFail: 'Saving failed',
+    savedPrefix: '✅ Saved ',
+    tunnelConnected: 'Tunnel connected.',
+    tunnelStarting: 'Tunnel starting — will connect automatically in a moment.',
+    doneText: 'Setup complete and tunnel started.',
+    doneLink: '→ Continue to the dashboard',
+    doneReload: '(reload the page if needed)',
+    skip: 'Skip? Without a token reef-cloud runs purely local —',
+    skipLink: 'straight to the dashboard',
+    skipNote: 'The wizard will appear again on the next start.',
+    statusError: 'Could not load status: ',
+  },
+};
+
+let lang = 'de';
+try {
+  const v = localStorage.getItem('reefcloud.lang');
+  if (v === 'de' || v === 'en') lang = v;
+  else lang = (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' : 'en';
+} catch { /* localStorage kann fehlen */ }
+
+const t = (k) => (I18N[lang] && I18N[lang][k]) || I18N.de[k] || k;
+const tf = (k, vars) => Object.entries(vars).reduce((s, [kk, vv]) => s.replace('{' + kk + '}', vv), t(k));
+
+function applyLang(l, persist) {
+  lang = l;
+  if (persist) { try { localStorage.setItem('reefcloud.lang', l); } catch { /* ignore */ } }
+  document.documentElement.lang = l;
+  document.title = t('title');
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  $('token').placeholder = lastHasToken ? t('tokenSaved') : t('tokenPlaceholder');
+  $('langDe').classList.toggle('active', l === 'de');
+  $('langEn').classList.toggle('active', l === 'en');
+  loadStatus(); // dynamische Zeilen in der neuen Sprache neu rendern
+}
+$('langDe').onclick = () => applyLang('de', true);
+$('langEn').onclick = () => applyLang('en', true);
+
+// ---------- Status laden ----------
+let lastHasToken = false;
+
 async function loadStatus() {
+  $('certLine').textContent = t('certChecking');
+  if (!$('ipList').children.length) {
+    const li = document.createElement('li');
+    li.textContent = t('ipsDetecting');
+    $('ipList').append(li);
+  }
   try {
     const s = await (await fetch('/api/setup/status')).json();
     // Server-Daten werden ausschließlich per textContent/DOM-Knoten gerendert
@@ -117,13 +237,16 @@ async function loadStatus() {
     const certLine = $('certLine');
     certLine.textContent = '';
     if (s.cert && s.cert.cn) {
-      certLine.append('Selbst-signiertes Zertifikat aktiv: ');
+      certLine.append(t('certActive'));
       const cn = document.createElement('code');
       cn.textContent = s.cert.cn;
       certLine.append(cn);
-      if (s.cert.notAfter) certLine.append(' (gültig bis ' + new Date(s.cert.notAfter).toLocaleDateString('de-DE') + ')');
+      if (s.cert.notAfter) {
+        const loc = lang === 'de' ? 'de-DE' : 'en-US';
+        certLine.append(tf('certValid', { date: new Date(s.cert.notAfter).toLocaleDateString(loc) }));
+      }
     } else {
-      certLine.textContent = 'Zertifikat wird beim ersten Start automatisch erzeugt.';
+      certLine.textContent = t('certCreated');
     }
     const ipList = $('ipList');
     ipList.textContent = '';
@@ -140,47 +263,48 @@ async function loadStatus() {
       }
     } else {
       const li = document.createElement('li');
-      li.textContent = 'Keine LAN-IP gefunden — Netzwerk prüfen.';
+      li.textContent = t('ipsNone');
       ipList.append(li);
     }
     $('url').value = s.tunnelUrl || ''; // keine Voreinstellung — URL kommt vom Nutzer
-    if (s.hasToken) $('token').placeholder = 'Token gespeichert — leer lassen zum Behalten';
+    lastHasToken = !!s.hasToken;
+    $('token').placeholder = lastHasToken ? t('tokenSaved') : t('tokenPlaceholder');
   } catch (e) {
-    $('certLine').textContent = 'Status konnte nicht geladen werden: ' + e.message;
+    $('certLine').textContent = t('statusError') + e.message;
   }
 }
 
 $('testBtn').onclick = async () => {
-  msg('ok', 'Teste Verbindung …');
+  msg('ok', t('testing'));
   $('testBtn').disabled = true;
   try {
     const r = await (await fetch('/api/setup/test', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tunnelUrl: $('url').value.trim(), tunnelToken: $('token').value.trim() }),
     })).json();
-    if (r.ok) msg('ok', '✅ Verbindung erfolgreich — Server hat den Token akzeptiert.');
-    else msg('err', '❌ ' + (r.error || 'Verbindung fehlgeschlagen'));
+    if (r.ok) msg('ok', t('testOk'));
+    else msg('err', '❌ ' + (r.error || t('testFail')));
   } catch (e) { msg('err', '❌ ' + e.message); }
   $('testBtn').disabled = false;
 };
 
 $('saveBtn').onclick = async () => {
   $('saveBtn').disabled = true;
-  msg('ok', 'Speichere und starte Tunnel …');
+  msg('ok', t('saving'));
   try {
     const r = await (await fetch('/api/setup', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tunnelUrl: $('url').value.trim(), tunnelToken: $('token').value.trim() }),
     })).json();
-    if (!r.ok) throw new Error(r.error || 'Speichern fehlgeschlagen');
-    msg('ok', `✅ Gespeichert (${r.envFile}). Tunnel ${r.tunnelConnected ? 'verbunden' : 'startet — verbindet gleich automatisch'}.`);
+    if (!r.ok) throw new Error(r.error || t('saveFail'));
+    msg('ok', `${t('savedPrefix')}(${r.envFile}). ${r.tunnelConnected ? t('tunnelConnected') : t('tunnelStarting')}`);
     $('done').style.display = 'block';
     $('done').scrollIntoView({ behavior: 'smooth' });
   } catch (e) { msg('err', '❌ ' + e.message); }
   $('saveBtn').disabled = false;
 };
 
-loadStatus();
+applyLang(lang, false);
 </script>
 </body>
 </html>
