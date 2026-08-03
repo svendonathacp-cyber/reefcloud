@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, LayoutDashboard, Plus, ScrollText, Settings as SettingsIcon } from 'lucide-react';
+import { AlertTriangle, LayoutDashboard, ScrollText, Settings as SettingsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/sonner';
@@ -114,7 +114,6 @@ export default function Home() {
         {/* Mobile: Auswahl als Chips (Sidebar erst ab lg) */}
         <div className="flex gap-2 overflow-x-auto border-b border-border bg-[#0d1526] px-3 py-2 lg:hidden">
           <Chip active={selected === 'dashboard'} onClick={() => setSelected('dashboard')} Icon={LayoutDashboard} label={t('nav.dashboard')} />
-          <Chip active={selected === 'onboarding'} onClick={() => setSelected('onboarding')} Icon={Plus} label={t('onboarding.addDevice')} />
           <Chip active={selected === 'log'} onClick={() => setSelected('log')} Icon={ScrollText} label={t('nav.log')} />
           <Chip active={selected === 'settings'} onClick={() => setSelected('settings')} Icon={SettingsIcon} label={t('nav.settings')} />
           {sorted.map((d) => {
@@ -133,13 +132,6 @@ export default function Home() {
 
           {view === 'dashboard' && (
             <>
-              {/* Prominenter Einstieg ins Geräte-Onboarding */}
-              <div className="mb-5 flex justify-end">
-                <Button onClick={() => setSelected('onboarding')} className="gap-1.5">
-                  <Plus className="h-4 w-4" />
-                  {t('onboarding.addDevice')}
-                </Button>
-              </div>
               {loading && devices.length === 0 && !error && (
                 <>
                   <p className="mb-4 text-sm text-muted-foreground">{t('home.loading')}</p>
@@ -165,9 +157,9 @@ export default function Home() {
               {!loading && devices.length === 0 && !error && (
                 <div className="rounded-xl border border-dashed border-border bg-card/40 px-6 py-12 text-center">
                   <p className="text-sm text-muted-foreground">{t('home.noDevices')}</p>
-                  <Button onClick={() => setSelected('onboarding')} className="mt-4 gap-1.5">
-                    <Plus className="h-4 w-4" />
-                    {t('onboarding.addDevice')}
+                  <Button variant="outline" onClick={() => setSelected('settings')} className="mt-4 gap-1.5">
+                    <SettingsIcon className="h-4 w-4" />
+                    {t('home.addDeviceHint')}
                   </Button>
                 </div>
               )}
@@ -178,7 +170,7 @@ export default function Home() {
             <OnboardingWizard devices={devices} onDone={() => setSelected('dashboard')} onOpenDevice={openDetail} />
           )}
           {view === 'log' && <LogView frames={frames} captureOn={captureOn} />}
-          {view === 'settings' && <Settings />}
+          {view === 'settings' && <Settings devices={devices} onOpenDevice={openDetail} />}
           {view !== 'dashboard' && view !== 'log' && view !== 'settings' && view !== 'onboarding' && currentDev && <DeviceDetail dev={currentDev} devices={devices} now={now} sendCommand={sendCommand} setNickname={setNickname} setDeviceProps={setDeviceProps} />}
         </main>
       </div>
