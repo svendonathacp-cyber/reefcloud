@@ -793,6 +793,13 @@ function updateState(serial, cls, method, payloadBuf) {
   if (!loggedBinaryOnce.has(sig) && !/Report$/.test(cls)) {
     loggedBinaryOnce.add(sig);
     log(`  ⓘ Binärframe ${sig} (${payloadBuf.length} B): ${payloadBuf.toString('hex').slice(0, 120)}`);
+    // Volldump sichern — die Log-Zeile ist auf 120 Hex gekürzt, für das
+    // Decoding großer Frames (z. B. dzRefresh/settings 440 B) reicht das nicht.
+    try {
+      const dir = path.join(DUMP_DIR, 'unknown');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `${Date.now()}_${cls}_${method}_${serial}.bin`), payloadBuf);
+    } catch { /* Dump ist best effort */ }
   }
 }
 
