@@ -1398,8 +1398,11 @@ const joins = new Map();   // serial → Set<appWs>  (welche App hat welches Ger
 
 // Ablaufschacht-Stabilisierung (siehe reef-autolevel.mjs): Level-Sensoren
 // regeln die RFP-Stärke. Config autolevel.json (Laufzeitdaten, .gitignore).
+// Ereignis-History liegt in der SQLite-DB (historyDb) — ohne History-Support
+// fällt das Modul auf seine alte JSON-Datei zurück.
 const autolevel = createAutolevel({
   dir: __dirname, log, metaFor, devices, buildCommandFrame, encodeFrame, captureFrame,
+  historyDb: history ?? undefined,
 });
 
 // Auto-Update über das Git-Repo (siehe reef-updater.mjs): täglicher Check

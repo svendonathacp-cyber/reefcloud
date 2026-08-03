@@ -66,15 +66,40 @@ const t1 = met.find((m) => m.serial === 'RFTEST1' && m.metric === 'temperatureC'
 assert.ok(t1 && t1.points >= 2 && t1.firstTs === T0);
 ok('metrics: Übersicht mit Punktzahl und Zeitspanne');
 
+// ---------- events: Ereignis-Log (Autolevel-Muster) ----------
+assert.equal(h.recordEvent({ ts: T0, kind: 'autolevel', serial: 'RFLS01', reason: 'tooFull', oldValue: 60, newValue: 59 }), true);
+assert.equal(h.recordEvent({ ts: T0 + 60_000, kind: 'autolevel', serial: 'RFLS02', reason: 'staleData' }), true);
+assert.equal(h.recordEvent({ ts: T0 + 120_000, kind: 'other', reason: 'x' }), true);
+assert.equal(h.recordEvent({ kind: 'autolevel' }), false); // ohne ts
+assert.equal(h.recordEvent(null), false);
+ok('events: recordEvent validiert und speichert');
+
+const evts = h.queryEvents('autolevel', { fromMs: 0, toMs: T0 + 700_000, limit: 50 });
+assert.equal(evts.length, 2);
+assert.equal(evts[0].reason, 'staleData'); // neueste zuerst
+assert.equal(evts[0].oldValue, null);
+assert.equal(evts[1].reason, 'tooFull');
+assert.equal(evts[1].oldValue, 60);
+assert.equal(evts[1].newValue, 59);
+assert.equal(evts[1].serial, 'RFLS01');
+ok('events: queryEvents liefert neueste zuerst mit alt/neu-Werten');
+
+const evtsRange = h.queryEvents('autolevel', { fromMs: T0 + 30_000, toMs: T0 + 90_000 });
+assert.equal(evtsRange.length, 1);
+ok('events: Zeitfilter greift');
+
 // ---------- prune ----------
 const old = h.query('RFTEST2', 'speed', 0, T0 + 700_000).length;
 assert.ok(old > 0);
+const evBefore = h.queryEvents('autolevel', { fromMs: 0, toMs: T0 + 700_000 }).length;
 const deleted = h.prune(T0 + 300_000);
 assert.ok(deleted > 0);
 const remaining = h.query('RFTEST2', 'speed', 0, T0 + 700_000);
 assert.ok(remaining.length < old);
 assert.ok(remaining.every((p) => p.ts >= T0 + 300_000));
-ok(`prune: ${deleted} Punkte gelöscht, ${remaining.length} behalten (Grenze eingehalten)`);
+const evAfter = h.queryEvents('autolevel', { fromMs: 0, toMs: T0 + 700_000 }).length;
+assert.equal(evAfter, 0); // beide Events (T0, T0+60 s) sind älter als die Grenze
+ok(`prune: ${deleted} Zeilen gelöscht (samples + events), Grenze eingehalten`);
 
 // ---------- Reopen: Daten überleben ----------
 h.close();

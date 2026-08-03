@@ -46,9 +46,25 @@ export function openHistory(dbPath, { minIntervalMs = DEFAULT_MIN_INTERVAL_MS } 
     value REAL NOT NULL
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS idx_samples ON samples (serial, metric, ts)');
+  // Ereignisse (diskrete Aktionen mit Grund, z. B. Autolevel-Eingriffe):
+  // passt nicht ins Metrik-Schema (Grund + alt/neu), aber unter dieselbe
+  // Retention-Regel (prune löscht beide Tabellen).
+  db.exec(`CREATE TABLE IF NOT EXISTS events (
+    ts INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    serial TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    oldValue REAL,
+    newValue REAL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events ON events (kind, ts)');
 
   const ins = db.prepare('INSERT INTO samples (ts, serial, metric, value) VALUES (?, ?, ?, ?)');
   const del = db.prepare('DELETE FROM samples WHERE ts < ?');
+  const delEvents = db.prepare('DELETE FROM events WHERE ts < ?');
+  const insEvent = db.prepare('INSERT INTO events (ts, kind, serial, reason, oldValue, newValue) VALUES (?, ?, ?, ?, ?, ?)');
+  const eventsStmt = db.prepare(
+    'SELECT ts, kind, serial, reason, oldValue, newValue FROM events WHERE kind = ? AND ts >= ? AND ts <= ? ORDER BY ts DESC LIMIT ?');
   const rawStmt = db.prepare(
     'SELECT ts, value FROM samples WHERE serial = ? AND metric = ? AND ts >= ? AND ts <= ? ORDER BY ts LIMIT 20000');
   const bucketStmt = db.prepare(
@@ -104,12 +120,36 @@ export function openHistory(dbPath, { minIntervalMs = DEFAULT_MIN_INTERVAL_MS } 
     }));
   }
 
-  // prune(olderThanMs) → Anzahl gelöschter Punkte
+  // recordEvent({ ts, kind, serial, reason, oldValue, newValue }): diskretes
+  // Ereignis speichern (z. B. Autolevel-Eingriff). oldValue/newValue optional.
+  function recordEvent(evt) {
+    if (!evt || !Number.isFinite(evt.ts) || typeof evt.kind !== 'string' || !evt.kind) return false;
+    const numOrNull = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    insEvent.run(
+      Math.round(evt.ts), evt.kind,
+      typeof evt.serial === 'string' ? evt.serial : '',
+      typeof evt.reason === 'string' ? evt.reason : '',
+      numOrNull(evt.oldValue), numOrNull(evt.newValue),
+    );
+    return true;
+  }
+
+  // queryEvents(kind, { fromMs, toMs, limit }): neueste zuerst
+  function queryEvents(kind, { fromMs = 0, toMs = Date.now(), limit = 100 } = {}) {
+    return eventsStmt.all(kind, fromMs, toMs, Math.max(1, Math.min(1000, Math.round(limit))))
+      .map((r) => ({
+        ts: Number(r.ts), kind: r.kind, serial: r.serial, reason: r.reason,
+        oldValue: r.oldValue === null ? null : Number(r.oldValue),
+        newValue: r.newValue === null ? null : Number(r.newValue),
+      }));
+  }
+
+  // prune(olderThanMs) → Anzahl gelöschter Zeilen (samples + events)
   function prune(olderThanMs) {
-    return Number(del.run(olderThanMs).changes);
+    return Number(del.run(olderThanMs).changes) + Number(delEvents.run(olderThanMs).changes);
   }
 
   function close() { db.close(); }
 
-  return { record, query, metrics, prune, close };
+  return { record, query, metrics, recordEvent, queryEvents, prune, close };
 }

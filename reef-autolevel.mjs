@@ -51,12 +51,19 @@ const SERIAL_RE = /^[\w-]{1,32}$/;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame, encodeFrame, captureFrame }) {
+export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame, encodeFrame, captureFrame, historyDb }) {
   const FILE = path.join(dir, 'autolevel.json');
   const HISTORY_FILE = path.join(dir, 'autolevel-history.json');
   const config = { ...AUTOLEVEL_DEFAULTS };
   // { ts, reason: 'tooFull'|'tooEmpty', sensorSerial, oldSpeed, newSpeed }
   // { ts, reason: 'staleData', sensorSerial } — übersprungene Anpassung
+  //
+  // Speicher: primär SQLite (events-Tabelle der Zeitreihen-History, kind
+  // 'autolevel') — damit liegt alles an einem Ort und die Retention-Regel
+  // (historyRetentionDays) gilt auch hier. Die alte autolevel-history.json
+  // wird beim ersten Start einmalig importiert und in .migrated umbenannt.
+  // Ohne historyDb (Standalone/Tests) bleibt das alte JSON-Ringpuffer-Verhalten.
+  const useDb = !!(historyDb && typeof historyDb.recordEvent === 'function' && typeof historyDb.queryEvents === 'function');
   const history = [];
   let lastActionTs = 0;
   const lastAdjustAt = { up: 0, down: 0 }; // Cooldown pro Richtung
@@ -64,11 +71,28 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
 
   // History persistent halten (Pi läuft 24/7, Neustarts sollen nichts
   // verlieren): tolerant laden, atomar schreiben (tmp+rename wie autolevel.json).
+  // Bei aktivem historyDb: einmalige Migration JSON → SQLite.
   try {
     const rawH = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
     if (Array.isArray(rawH)) {
+      const entries = [];
       for (const e of rawH.slice(-HISTORY_MAX)) {
-        if (e && Number.isFinite(e.ts) && typeof e.reason === 'string') history.push(e);
+        if (e && Number.isFinite(e.ts) && typeof e.reason === 'string') entries.push(e);
+      }
+      if (useDb) {
+        let imported = 0;
+        for (const e of entries) {
+          if (historyDb.recordEvent({
+            ts: e.ts, kind: 'autolevel', serial: typeof e.sensorSerial === 'string' ? e.sensorSerial : '',
+            reason: e.reason, oldValue: e.oldSpeed, newValue: e.newSpeed,
+          })) imported++;
+        }
+        try {
+          fs.renameSync(HISTORY_FILE, `${HISTORY_FILE}.migrated`);
+          log(`Autolevel-History migriert: ${imported} Ereignisse → SQLite (autolevel-history.json → .migrated)`);
+        } catch (e) { log(`!! autolevel-history.json migriert, aber Umbenennen fehlgeschlagen: ${e.message}`); }
+      } else {
+        history.push(...entries);
       }
     }
   } catch { /* Datei optional/defekt → leere History */ }
@@ -145,6 +169,16 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
   }
 
   function pushHistory(entry) {
+    if (useDb) {
+      try {
+        historyDb.recordEvent({
+          ts: entry.ts, kind: 'autolevel',
+          serial: typeof entry.sensorSerial === 'string' ? entry.sensorSerial : '',
+          reason: entry.reason, oldValue: entry.oldSpeed, newValue: entry.newSpeed,
+        });
+      } catch (e) { log(`!! [autolevel] History-Ereignis nicht gespeichert: ${e.message}`); }
+      return;
+    }
     history.push(entry);
     if (history.length > HISTORY_MAX) history.shift();
     saveHistory();
@@ -294,8 +328,21 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
   }
 
   function payload() {
-    // History: neueste zuerst
-    return { config: { ...config }, status: status(), history: history.slice().reverse() };
+    // History: neueste zuerst — aus SQLite (gleiche Eintragsform wie früher
+    // die JSON-Datei: { ts, reason, sensorSerial, oldSpeed?, newSpeed? })
+    let hist;
+    if (useDb) {
+      try {
+        hist = historyDb.queryEvents('autolevel', { limit: HISTORY_MAX }).map((e) => ({
+          ts: e.ts, reason: e.reason, sensorSerial: e.serial,
+          ...(e.oldValue !== null ? { oldSpeed: e.oldValue } : {}),
+          ...(e.newValue !== null ? { newSpeed: e.newValue } : {}),
+        }));
+      } catch { hist = []; }
+    } else {
+      hist = history.slice().reverse();
+    }
+    return { config: { ...config }, status: status(), history: hist };
   }
 
   // Config-Teilmenge aus POST /api/autolevel validieren.
