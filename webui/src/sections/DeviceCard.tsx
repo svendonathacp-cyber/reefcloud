@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { StepperInput } from '@/components/ui/stepper-input';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import {
-  Beaker, Cpu, Droplets, FlaskConical, Gauge, Lightbulb,
+  Beaker, Cpu, Droplets, Fan, FlaskConical, Gauge, Lightbulb,
   Plug, Ruler, Scroll, Thermometer, Waves, type LucideIcon,
 } from 'lucide-react';
 import WaveScheduleEditor from './WaveScheduleEditor';
@@ -30,6 +31,7 @@ export const FAMILY_META: Record<string, { nameKey: MessageKey; Icon: LucideIcon
   doser: { nameKey: 'family.doser', Icon: Beaker, color: '#f472b6' },
   level: { nameKey: 'family.level', Icon: Ruler, color: '#4ade80' },
   powerswitcher: { nameKey: 'family.powerswitcher', Icon: Plug, color: '#facc15' },
+  jebao: { nameKey: 'family.jebao', Icon: Fan, color: '#60a5fa' },
   unknown: { nameKey: 'family.unknown', Icon: Cpu, color: '#94a3b8' },
 };
 
@@ -40,6 +42,27 @@ export function deviceDisplayName(dev: DeviceSnapshot): string {
 
 export const WAVE_MODE_KEYS: Record<number, MessageKey> = {
   1: 'waveMode.1', 2: 'waveMode.2', 3: 'waveMode.3', 4: 'waveMode.4',
+};
+
+// Jebao-Wavemaker (Gizwits-LAN): Modi 0–3, Kopplung 0–2, Auto-Modi 0–5
+export const JEBAO_MODE_KEYS: Record<number, MessageKey> = {
+  0: 'jebao.mode.0', 1: 'jebao.mode.1', 2: 'jebao.mode.2', 3: 'jebao.mode.3',
+};
+export const JEBAO_LINKAGE_KEYS: Record<number, MessageKey> = {
+  0: 'jebao.linkage.0', 1: 'jebao.linkage.1', 2: 'jebao.linkage.2',
+};
+export const JEBAO_AUTOMODE_KEYS: Record<number, MessageKey> = {
+  0: 'jebao.autoMode.0', 1: 'jebao.autoMode.1', 2: 'jebao.autoMode.2',
+  3: 'jebao.autoMode.3', 4: 'jebao.autoMode.4', 5: 'jebao.autoMode.5',
+};
+export const JEBAO_FAULT_KEYS: Record<string, MessageKey> = {
+  overcurrent: 'jebao.fault.overcurrent',
+  overvoltage: 'jebao.fault.overvoltage',
+  overtemperature: 'jebao.fault.overtemperature',
+  undervoltage: 'jebao.fault.undervoltage',
+  blocked: 'jebao.fault.blocked',
+  dryrun: 'jebao.fault.dryrun',
+  uart: 'jebao.fault.uart',
 };
 
 // Level-Keeper-Status (Server-Key aus LK_STATUS_TEXT, reef-onboard.mjs) → i18n
@@ -150,6 +173,115 @@ function WaveBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Comm
       {hasSchedule
         ? <WaveScheduleEditor dev={dev} sendCommand={sendCommand} />
         : <SpeedControl dev={dev} sendCommand={sendCommand} />}
+    </>
+  );
+}
+
+// Prozent-Slider mit Commit beim Loslassen (Radix onValueCommit) — vermeidet
+// Kommando-Flut während des Ziehens.
+function PctSlider({ label, value, disabled, onCommit }: {
+  label: string; value: number; disabled?: boolean; onCommit: (v: number) => void;
+}) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono text-sm font-semibold text-[#17c3d6]">{v} %</span>
+      </div>
+      <Slider value={[v]} min={0} max={100} step={1} disabled={disabled}
+        onValueChange={([x]) => setV(x)}
+        onValueCommit={([x]) => { if (x !== value) onCommit(x); }} />
+    </div>
+  );
+}
+
+// Jebao-Strömungspumpe (Gizwits-LAN): EIN/Aus, Modus 0–3, Flow-/Frequenz-
+// Slider, Fütterung mit editierbarer Dauer, Fault-Badges, Kopplung/Timer klein.
+// State-Felder kommen vom Dekoder in reef-jebao.mjs.
+function JebaoBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: CommandFn }) {
+  const t = useT();
+  const [busy, setBusy] = useState<string | null>(null);
+  const on = dev.state.on === true;
+  const mode = num(dev.state.mode, -1);
+  const feeding = dev.state.feed === true;
+  const feedTime = Math.max(1, num(dev.state.feedTimeMin, 10));
+  const [feedMin, setFeedMin] = useState(feedTime);
+  useEffect(() => setFeedMin(feedTime), [feedTime]);
+  const faults = Array.isArray(dev.state.faults) ? (dev.state.faults as string[]) : [];
+  const linkage = num(dev.state.linkage, -1);
+  const autoMode = num(dev.state.autoMode, -1);
+  const linkageKey = JEBAO_LINKAGE_KEYS[linkage];
+  const autoModeKey = JEBAO_AUTOMODE_KEYS[autoMode];
+
+  const run = async (action: string, params: Record<string, unknown>, label: string) => {
+    setBusy(action);
+    try {
+      await sendCommand(dev.serial, action, params);
+      toast.success(t('common.sent', { label }));
+    } catch (e) { toast.error(t('common.error', { msg: e instanceof Error ? e.message : String(e) })); }
+    setBusy(null);
+  };
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {mode >= 0 && JEBAO_MODE_KEYS[mode] && <Badge variant="secondary">{t(JEBAO_MODE_KEYS[mode])}</Badge>}
+        {feeding && <Badge variant="default">{t('jebao.feedActive')}</Badge>}
+        {faults.length === 0
+          ? <Badge variant="secondary">{t('jebao.noFaults')}</Badge>
+          : faults.map((f) => <Badge key={f} variant="destructive">{JEBAO_FAULT_KEYS[f] ? t(JEBAO_FAULT_KEYS[f]) : f}</Badge>)}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3 text-sm">
+        <span className="text-muted-foreground">{t('jebao.power')}</span>
+        <Switch checked={on} disabled={!dev.online || busy !== null}
+          onCheckedChange={(v) => void run('setPower', { on: v }, t(v ? 'common.on' : 'common.off'))} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-1.5">
+        {[0, 1, 2, 3].map((m) => (
+          <Button key={m} size="sm" variant={mode === m ? 'default' : 'outline'}
+            disabled={!dev.online || busy !== null || mode === m}
+            className="px-1 text-xs"
+            onClick={() => void run('setMode', { mode: m }, t(JEBAO_MODE_KEYS[m]))}>
+            {busy === 'setMode' && mode !== m ? '…' : t(JEBAO_MODE_KEYS[m])}
+          </Button>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <PctSlider label={t('jebao.flow')} value={num(dev.state.flow)} disabled={!dev.online || busy !== null}
+          onCommit={(v) => void run('setFlow', { flow: v }, `${t('jebao.flow')} ${v} %`)} />
+        <PctSlider label={t('jebao.frequency')} value={num(dev.state.frequency)} disabled={!dev.online || busy !== null}
+          onCommit={(v) => void run('setFrequency', { frequency: v }, `${t('jebao.frequency')} ${v} %`)} />
+      </div>
+
+      <div className="mt-4 border-t border-border/60 pt-3">
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">{t('jebao.feedTime')}</span>
+          <span className="flex items-center gap-2">
+            <StepperInput min={1} max={255} value={String(feedMin)} disabled={!dev.online}
+              onChange={(v) => setFeedMin(Math.max(1, Math.min(255, Number(v) || 1)))} className="w-24" />
+            <Button size="sm" variant="outline" disabled={!dev.online || busy !== null || feedMin === feedTime}
+              onClick={() => void run('setFeedTime', { minutes: feedMin }, `${t('jebao.feedTime')} ${feedMin} min`)}>
+              {busy === 'setFeedTime' ? '…' : t('common.apply')}
+            </Button>
+          </span>
+        </div>
+        <Button size="sm" variant={feeding ? 'default' : 'secondary'} className="mt-2 w-full"
+          disabled={!dev.online || busy !== null}
+          onClick={() => void run('setFeed', { on: !feeding }, t(feeding ? 'jebao.feedStop' : 'jebao.feedStart'))}>
+          {busy === 'setFeed' ? '…' : feeding ? t('jebao.feedStop') : t('jebao.feedStart')}
+        </Button>
+      </div>
+
+      <p className="mt-3 text-xs text-muted-foreground">
+        {t('jebao.linkage')}: {linkageKey ? t(linkageKey) : '—'}
+        {' · '}{t('jebao.timerOn')}: {dev.state.timerOn === true ? t('common.on') : t('common.off')}
+        {autoModeKey ? ` · ${t('jebao.autoMode')}: ${t(autoModeKey)}` : ''}
+      </p>
     </>
   );
 }
@@ -286,4 +418,4 @@ function GenericBody({ dev }: { dev: DeviceSnapshot }) {
 }
 
 // Wiederverwendung in der RF-Stil-Detailansicht
-export { SpeedControl, BasepumpBody, WaveBody, RollerBody, FlareBody, GenericBody };
+export { SpeedControl, BasepumpBody, WaveBody, JebaoBody, RollerBody, FlareBody, GenericBody };

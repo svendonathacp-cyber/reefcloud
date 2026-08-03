@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useI18n, useT } from '@/i18n/I18nContext';
+import JebaoSection from '@/sections/JebaoSection';
 import SystemSection from '@/sections/SystemSection';
 
 type TunnelType = 'webos' | 'homeassistant' | 'custom';
@@ -485,6 +486,9 @@ export default function Settings() {
               </div>
             </section>
           )}
+
+          {/* ===== Jebao-Pumpen (Gizwits-LAN) ===== */}
+          <JebaoSection />
 
           {/* ===== System (Updates & Neustart) ===== */}
           <SystemSection />

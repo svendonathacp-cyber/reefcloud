@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
-  BasepumpBody, deviceDisplayName, FlareBody, FAMILY_META, GenericBody, LK_STATUS_KEYS, RollerBody, WaveBody, WAVE_MODE_KEYS,
+  BasepumpBody, deviceDisplayName, FlareBody, FAMILY_META, GenericBody, JEBAO_MODE_KEYS, JebaoBody, LK_STATUS_KEYS, RollerBody, WaveBody, WAVE_MODE_KEYS,
 } from './DeviceCard';
 import { StatusDot, StatusLabel, statusOf } from './DeviceTile';
 import { Switch } from '@/components/ui/switch';
@@ -112,6 +112,17 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
           <BigStat label={t('salinity.conductivity25')} value={fmt(dev.state.conductivityMs25)} unit="mS/cm" />
           <BigStat label={t('salinity.salinity')} value={fmt(dev.state.salinityPpt)} unit="ppt" />
           <BigStat label={t('detail.temperature')} value={fmt(dev.state.temperatureC)} unit="°C" />
+        </>
+      );
+    }
+    case 'jebao': {
+      const m = num(dev.state.mode, -1);
+      const modeKey = JEBAO_MODE_KEYS[m];
+      return (
+        <>
+          <BigStat label={t('jebao.flow')} value={num(dev.state.flow)} unit="%" />
+          <BigStat label={t('common.mode')} value={modeKey ? t(modeKey) : '—'} accent={false} />
+          <BigStat label={t('jebao.frequency')} value={num(dev.state.frequency)} unit="%" accent={false} />
         </>
       );
     }
@@ -436,7 +447,7 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
   const t = useT();
   const meta = FAMILY_META[dev.family] ?? FAMILY_META.unknown;
   const { Icon } = meta;
-  const hasControls = ['basepump', 'wave', 'roller'].includes(dev.family);
+  const hasControls = ['basepump', 'wave', 'roller', 'jebao'].includes(dev.family);
   const status = statusOf(dev);
   const display = deviceDisplayName(dev) || t(meta.nameKey);
   return (
@@ -475,6 +486,7 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
             </>
           )}
           {dev.family === 'wave' && <WaveBody dev={dev} sendCommand={sendCommand} />}
+          {dev.family === 'jebao' && <JebaoBody dev={dev} sendCommand={sendCommand} />}
           {dev.family === 'roller' && <RollerBody dev={dev} sendCommand={sendCommand} />}
           {dev.family === 'flare' && (
             <>
@@ -488,7 +500,7 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
           {dev.family === 'doser' && <DoserBody dev={dev} now={now} sendCommand={sendCommand} />}
           {dev.family === 'levelSensor' && <LevelSensorBody dev={dev} setDeviceProps={setDeviceProps} sendCommand={sendCommand} />}
           {dev.family === 'salinity' && <SalinityBody dev={dev} sendCommand={sendCommand} />}
-          {!['basepump', 'wave', 'roller', 'flare', 'level', 'doser', 'levelSensor', 'salinity'].includes(dev.family) && <GenericBody dev={dev} />}
+          {!['basepump', 'wave', 'roller', 'flare', 'level', 'doser', 'levelSensor', 'salinity', 'jebao'].includes(dev.family) && <GenericBody dev={dev} />}
           {!hasControls && !['flare', 'level', 'doser', 'levelSensor', 'salinity'].includes(dev.family) && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
               {t('detail.readonlyNote')}

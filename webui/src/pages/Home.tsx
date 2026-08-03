@@ -17,11 +17,11 @@ import DeviceDetail from '@/sections/DeviceDetail';
 import LogView from '@/sections/LogView';
 
 const GROUP_KEYS = [
-  { titleKey: 'groups.pumpsFilters', families: ['basepump', 'wave', 'roller'] },
+  { titleKey: 'groups.pumpsFilters', families: ['basepump', 'wave', 'jebao', 'roller'] },
   { titleKey: 'groups.lighting', families: ['flare'] },
 ] as const;
 
-const FAMILY_ORDER = ['basepump', 'wave', 'roller', 'flare', 'levelSensor', 'level', 'salinity', 'thermo', 'doser'];
+const FAMILY_ORDER = ['basepump', 'wave', 'jebao', 'roller', 'flare', 'levelSensor', 'level', 'salinity', 'thermo', 'doser'];
 
 function sortDevices(devices: DeviceSnapshot[]): DeviceSnapshot[] {
   return [...devices].sort((a, b) => {

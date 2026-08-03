@@ -30,6 +30,9 @@ device-ips.json
 device-props.json
 device-states.json
 
+# Jebao-Pumpen (Laufzeitdaten, enthält LAN-IPs — Vorlage: jebao.example.json)
+jebao.json
+
 # Ablaufschacht-Stabilisierung (Laufzeitdaten)
 autolevel.json
 autolevel-history.json
