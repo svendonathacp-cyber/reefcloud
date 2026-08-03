@@ -214,9 +214,9 @@ function startFakePump(statusBuf) {
             sentSecondLogin = true;
             setTimeout(() => sock.write(buildPacket(0x0009, Buffer.from([0]))), 50);
           }
-        } else if (p.cmd === 0x0001) {
+        } else if (p.cmd === 0x0015) {
           seen.pings++;
-          sock.write(buildPacket(0x0002));
+          sock.write(buildPacket(0x0016));
         } else if (p.cmd === 0x0090) {
           sock.write(buildPacket(0x0091, Buffer.concat([Buffer.from([0x03]), statusBuf])));
         } else if (p.cmd === 0x0093) {
@@ -323,7 +323,7 @@ function patchFlag(frame, flag) {
             pl.writeUInt16BE(PASSCODE.length, 0); PASSCODE.copy(pl, 2);
             sock.write(buildPacket(0x0007, pl));
           } else if (p.cmd === 0x0008) sock.write(buildPacket(0x0009, Buffer.from([0])));
-          else if (p.cmd === 0x0001) sock.write(buildPacket(0x0002));
+          else if (p.cmd === 0x0015) sock.write(buildPacket(0x0016));
           else if (p.cmd === 0x0090) sock.write(buildPacket(0x0091, Buffer.concat([Buffer.from([0x03]), statusBuf])));
         }
       });

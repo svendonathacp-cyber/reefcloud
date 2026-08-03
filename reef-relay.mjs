@@ -49,7 +49,7 @@ function hexPreview(bytes, max = 64) {
   return Array.from(slice, (b) => b.toString(16).padStart(2, '0')).join(' ') + (bytes.length > max ? ' …' : '');
 }
 
-const DUMP_DIR = path.join(__dirname, 'dumps');
+const DUMP_DIR = path.join(__dirname, 'dumps', `relay-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`);
 fs.mkdirSync(DUMP_DIR, { recursive: true });
 let dumpCounter = 0;
 

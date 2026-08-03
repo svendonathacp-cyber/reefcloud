@@ -14,7 +14,7 @@
 //   Status     0x0090 [0x02] → 0x0091: 1 B Action (0x03/0x04) + 401 B Statusdaten.
 //              Unaufgeforderte Pushes: cmd 0x0091/0x0093 mit Flag = 1.
 //   Schreiben  0x0093 → 0x0094. Payload: seq (u32BE) + [0x01] + attr_flags + attr_values
-//   Keepalive  Ping 0x0001 → Pong 0x0002, ~4 s (max. 10 s, sonst trennt das Gerät)
+//   Keepalive  Ping 0x0015 → Pong 0x0016, ~4 s (max. 10 s, sonst trennt das Gerät)
 import dgram from 'node:dgram';
 import net from 'node:net';
 import { EventEmitter } from 'node:events';
@@ -446,7 +446,7 @@ export class JebaoClient extends EventEmitter {
         this._sock.destroy();
         return;
       }
-      try { this._sock.write(buildPacket(0x0001)); } catch { /* close-Handler übernimmt */ }
+      try { this._sock.write(buildPacket(0x0015)); } catch { /* close-Handler übernimmt */ }
     }, this.pingIntervalMs);
   }
 
@@ -456,7 +456,7 @@ export class JebaoClient extends EventEmitter {
 
   _handlePacket({ flag, cmd, payload }) {
     this._lastRx = Date.now();
-    if (cmd === 0x0002) return; // Pong — _lastRx reicht als Lebenszeichen
+    if (cmd === 0x0016) return; // Pong — _lastRx reicht als Lebenszeichen
     if (cmd === 0x0062) return; // ESP32-C3: unaufgefordert, ohne Nutzlast-Bedeutung
     const seqKey = cmd === 0x0094 && payload.length >= 4
       ? `0x94:${payload.subarray(0, 4).toString('hex')}` : null;
