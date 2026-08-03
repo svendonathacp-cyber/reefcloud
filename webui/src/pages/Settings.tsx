@@ -12,8 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useI18n, useT } from '@/i18n/I18nContext';
+import AddDeviceSection from '@/sections/AddDeviceSection';
 import JebaoSection from '@/sections/JebaoSection';
 import SystemSection from '@/sections/SystemSection';
+import { useJebaoPumps } from '@/sections/jebao-shared';
+import type { DeviceSnapshot } from '@/types/reef';
+
+interface SettingsProps {
+  devices?: DeviceSnapshot[]; // für den eingebetteten RF-Einlern-Assistenten
+  onOpenDevice?: (serial: string) => void;
+}
 
 type TunnelType = 'webos' | 'homeassistant' | 'custom';
 const TUNNEL_TYPES: TunnelType[] = ['webos', 'homeassistant', 'custom'];
@@ -64,9 +72,12 @@ function shortenFingerprint(fp: string): string {
 const URL_RE = /^wss?:\/\//;
 const TOKEN_RE = /^[0-9a-f]{32,128}$/i;
 
-export default function Settings() {
+export default function Settings({ devices = [], onOpenDevice }: SettingsProps = {}) {
   const t = useT();
   const { locale } = useI18n();
+  // Geteilter Jebao-State: AddDeviceSection (Hinzufügen) und JebaoSection
+  // (Verwaltung) arbeiten auf derselben Pumpenliste.
+  const jebao = useJebaoPumps();
 
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [status, setStatus] = useState<SetupStatus | null>(null);
@@ -487,8 +498,11 @@ export default function Settings() {
             </section>
           )}
 
+          {/* ===== Geräte hinzufügen (Discovery + RF-Einlernen) ===== */}
+          <AddDeviceSection jebao={jebao} devices={devices} onOpenDevice={onOpenDevice ?? (() => { /* kein Kontext */ })} />
+
           {/* ===== Jebao-Pumpen (Gizwits-LAN) ===== */}
-          <JebaoSection />
+          <JebaoSection jebao={jebao} />
 
           {/* ===== System (Updates & Neustart) ===== */}
           <SystemSection />

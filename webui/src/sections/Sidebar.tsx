@@ -1,4 +1,4 @@
-import { LayoutDashboard, Plus, ScrollText, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, ScrollText, Settings as SettingsIcon } from 'lucide-react';
 import { deviceDisplayName, FAMILY_META } from './DeviceCard';
 import { statusOf } from './DeviceTile';
 import { useT } from '@/i18n/I18nContext';
@@ -66,20 +66,6 @@ export default function Sidebar({ devices, selected, onSelect }: Props) {
       </nav>
 
       <p className="px-4 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('nav.devices')}</p>
-      <div className="px-3 pb-2">
-        <button
-          onClick={() => onSelect('onboarding')}
-          className={`flex w-full items-center gap-2.5 rounded-lg border border-dashed px-3 py-2 text-left text-sm transition-colors
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-            selected === 'onboarding'
-              ? 'border-[#009deb] bg-[#009deb]/15 font-medium text-[#38bdf8]'
-              : 'border-[#009deb]/50 text-[#38bdf8]/90 hover:bg-[#009deb]/10'
-          }`}
-        >
-          <Plus className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{t('onboarding.addDevice')}</span>
-        </button>
-      </div>
       <div className="flex-1 space-y-3 overflow-y-auto px-3 pb-4">
         {groups.map((g) => {
           const meta = FAMILY_META[g.family] ?? FAMILY_META.unknown;
