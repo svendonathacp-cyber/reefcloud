@@ -2191,6 +2191,17 @@ const webServer = http.createServer(async (req, res) => {
     if (u.pathname === '/api/update/status' && req.method === 'GET') {
       return webSendJson(res, updater.status());
     }
+    // Log-Endpunkt: letzte N Zeilen des Server-Logs, optional gefiltert.
+    // Gedacht für Fernwartung (z. B. Kimi/Agenten im LAN) — LAN-only wie der Rest.
+    if (u.pathname === '/api/logs' && req.method === 'GET') {
+      const maxLines = Math.min(Math.max(parseInt(u.searchParams.get('lines') || '200', 10) || 200, 1), 2000);
+      const match = (u.searchParams.get('match') || '').toLowerCase();
+      let lines = [];
+      try { lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n'); } catch { /* Log noch nicht geschrieben */ }
+      if (match) lines = lines.filter((l) => l.toLowerCase().includes(match));
+      while (lines.length && lines[lines.length - 1] === '') lines.pop();
+      return webSendJson(res, { ok: true, file: path.basename(LOG_FILE), total: lines.length, lines: lines.slice(-maxLines) });
+    }
     if (u.pathname === '/api/update/check' && req.method === 'POST') {
       // check() wirft nie — Fehler stehen im Status (error)
       return webSendJson(res, await updater.check());
