@@ -547,6 +547,13 @@ function pruneHistory() {
 pruneHistory();
 setInterval(pruneHistory, 3_600_000).unref();
 
+// Periodischer Recorder (1/min): ohne ihn blieben stabile Sensoren (Temperatur
+// ändert sich minutenlang nicht → kein announce → kein Aufruf) komplett ohne
+// Punkte. Die Schreibdrossel in reef-history.mjs begrenzt auf 1 Punkt/Minute.
+setInterval(() => {
+  for (const serial of deviceMeta.keys()) recordHistory(serial);
+}, 60_000).unref();
+
 
 // ---------- Erreichbarkeits-Ping („Hello-Ping") für offline Geräte ----------
 // Die Geräte sind WS-Clients — der Server kann keine WS-Verbindung ZUM Gerät
