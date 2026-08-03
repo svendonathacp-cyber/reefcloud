@@ -29,6 +29,7 @@ const METRIC_INFO: Record<string, { unit: string; discrete?: boolean; key: Messa
 
 interface MetricEntry { serial: string; metric: string; points: number; firstTs: number; lastTs: number }
 interface Point { ts: number; value: number }
+interface AutoEvent { ts: number; reason: string; serial: string; oldValue: number | null; newValue: number | null }
 
 const RANGES = [
   { id: '24h', spanMs: 86_400_000, key: 'history.range.24h' as MessageKey },
@@ -57,6 +58,26 @@ function doserMetric(metric: string): { unit: string; labelKey: MessageKey; n: n
   };
 }
 
+// Autolevel-Marker: ▼ rot = „zu voll" (Speed gesenkt), ▲ grün = „zu leer"
+// (Speed gehoben). Hover-Titel erklärt den Eingriff (alt → neu).
+function EventDot(props: {
+  cx?: number; cy?: number; payload?: { reason: string; oldValue: number | null; value: number };
+  titleOf: (reason: string, oldValue: number | null, newValue: number) => string;
+}) {
+  const { cx, cy, payload, titleOf } = props;
+  if (cx == null || cy == null || !payload) return null;
+  const down = payload.reason === 'tooFull';
+  const color = down ? '#f87171' : '#4ade80';
+  const pts = down
+    ? `${cx - 6},${cy - 4} ${cx + 6},${cy - 4} ${cx},${cy + 6}`
+    : `${cx - 6},${cy + 4} ${cx + 6},${cy + 4} ${cx},${cy - 6}`;
+  return (
+    <polygon points={pts} fill={color} stroke="rgba(2,6,23,0.7)" strokeWidth={1}>
+      <title>{titleOf(payload.reason, payload.oldValue, payload.value)}</title>
+    </polygon>
+  );
+}
+
 // Zeitreihen-Karte für die Geräte-Detailansicht. Rendert nichts, wenn der
 // Server keine Punkte für dieses Gerät aufgezeichnet hat (History deaktiviert
 // oder Gerät ohne Metriken). Daten kommen gebucket vom Server (≤ ~480 Punkte).
@@ -68,6 +89,8 @@ export default function HistoryChart({ dev }: { dev: DeviceSnapshot }) {
   const [metric, setMetric] = useState<string>('');
   const [range, setRange] = useState<string>('24h');
   const [points, setPoints] = useState<Point[]>([]);
+  const [events, setEvents] = useState<AutoEvent[]>([]);
+  const [bounds, setBounds] = useState<{ from: number; to: number }>({ from: 0, to: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,12 +126,22 @@ export default function HistoryChart({ dev }: { dev: DeviceSnapshot }) {
       const j = await fetchJson(
         `/api/history?serial=${encodeURIComponent(dev.serial)}&metric=${encodeURIComponent(metric)}&from=${from}&to=${to}`);
       setPoints((Array.isArray(j.points) ? j.points : []) as Point[]);
+      setBounds({ from, to });
+      // Autolevel-Eingriffe als Marker über dem Speed-Chart der RFP
+      if (dev.family === 'basepump' && metric === 'speed') {
+        try {
+          const ej = await fetchJson(`/api/history/events?kind=autolevel&from=${from}&to=${to}`);
+          setEvents((Array.isArray(ej.events) ? ej.events : []) as AutoEvent[]);
+        } catch { setEvents([]); } // Events sind optional — Chart bleibt ohne Marker nutzbar
+      } else {
+        setEvents([]);
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
     if (!silent) setLoading(false);
-  }, [dev.serial, metric, range, firstTs]);
+  }, [dev.serial, dev.family, metric, range, firstTs]);
 
   useEffect(() => {
     void load();
@@ -142,6 +175,15 @@ export default function HistoryChart({ dev }: { dev: DeviceSnapshot }) {
   const fmtValue = (v: number) => {
     const s = v.toLocaleString(locale, { maximumFractionDigits: 2 });
     return unit ? `${s} ${unit}` : s;
+  };
+
+  // Event-Punkte für die Marker-Linie (nur Eingriffe mit alt/neu, kein staleData)
+  const eventPoints = events
+    .filter((e) => e.newValue !== null)
+    .map((e) => ({ ts: e.ts, value: e.newValue as number, reason: e.reason, oldValue: e.oldValue }));
+  const eventTitle = (reason: string, oldV: number | null, newV: number) => {
+    const key: MessageKey = reason === 'tooFull' ? 'history.event.tooFull' : 'history.event.tooEmpty';
+    return t(key, { old: oldV ?? '?', new: newV });
   };
 
   return (
@@ -199,6 +241,8 @@ export default function HistoryChart({ dev }: { dev: DeviceSnapshot }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" vertical={false} />
                 <XAxis
                   dataKey="ts"
+                  type="number"
+                  domain={[bounds.from || 'dataMin', bounds.to || 'dataMax']}
                   tickFormatter={fmtTick}
                   tick={{ fontSize: 11, fill: 'rgba(148,163,184,0.8)' }}
                   tickLine={false}
@@ -228,6 +272,17 @@ export default function HistoryChart({ dev }: { dev: DeviceSnapshot }) {
                   dot={false}
                   isAnimationActive={false}
                 />
+                {eventPoints.length > 0 && (
+                  <Line
+                    data={eventPoints}
+                    dataKey="value"
+                    stroke="none"
+                    legendType="none"
+                    dot={(p) => <EventDot {...p} titleOf={eventTitle} />}
+                    activeDot={false}
+                    isAnimationActive={false}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>

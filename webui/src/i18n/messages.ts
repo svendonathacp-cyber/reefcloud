@@ -323,6 +323,8 @@ export const de = {
   'history.metric.rollCurrentLength': 'Vlies-Restlänge',
   'history.metric.pumpTodayMl': 'Pumpe {n}: heute dosiert',
   'history.metric.pumpFillMl': 'Pumpe {n}: Füllstand',
+  'history.event.tooFull': 'Autolevel: Schacht zu voll — {old} → {new} %',
+  'history.event.tooEmpty': 'Autolevel: Schacht zu leer — {old} → {new} %',
 
   // Einstellungen — Anleitungen
   'settings.guides': 'Anleitungen',
@@ -984,6 +986,8 @@ export const en: Record<MessageKey, string> = {
   'history.metric.rollCurrentLength': 'Fleece remaining',
   'history.metric.pumpTodayMl': 'Pump {n}: dosed today',
   'history.metric.pumpFillMl': 'Pump {n}: fill level',
+  'history.event.tooFull': 'Autolevel: sump too full — {old} → {new} %',
+  'history.event.tooEmpty': 'Autolevel: sump too empty — {old} → {new} %',
 
   // Settings — guides
   'settings.guides': 'Guides',

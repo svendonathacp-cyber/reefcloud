@@ -2359,6 +2359,18 @@ const webServer = http.createServer(async (req, res) => {
       const points = history.query(serial, metric, from, to, bucketSec);
       return webSendJson(res, { enabled: true, serial, metric, from, to, bucketSec, points });
     }
+    // GET /api/history/events?kind=&from=&to= → Ereignisse (z. B. Autolevel-Eingriffe)
+    if (u.pathname === '/api/history/events' && req.method === 'GET') {
+      if (!history) return webSendJson(res, { enabled: false, events: [] });
+      const kind = String(u.searchParams.get('kind') || 'autolevel');
+      if (!/^[\w-]{1,32}$/.test(kind)) throw new Error('kind ungültig');
+      const now = Date.now();
+      const to = Math.min(now, Number(u.searchParams.get('to')) || now);
+      const from = Math.max(0, Number(u.searchParams.get('from')) || (to - 86_400_000));
+      if (to <= from) throw new Error('from muss vor to liegen');
+      const events = history.queryEvents(kind, { fromMs: from, toMs: to, limit: 500 }).reverse();
+      return webSendJson(res, { enabled: true, kind, from, to, events });
+    }
     if (u.pathname === '/api/settings' && req.method === 'GET') {
       return webSendJson(res, {
         tunnelUrl: TUNNEL_URL,
