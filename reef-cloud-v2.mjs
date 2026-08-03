@@ -45,6 +45,16 @@ function log(...args) {
   logStream.write(line + '\n');
 }
 
+// Frühwarnung beim Start: dumps/ ist gitignored und muss separat per scp
+// übertragen werden (docs/pi-migration.md). Ohne die Mitschnitte entfallen
+// Replay-Antworten für die RF-App und das Login-Ack der Altgeräte — der Server
+// läuft gedrosselt weiter (loadReplay → null + Warnung), aber die Altgeräte
+// bekommen u. U. kein vollständiges Login. Lieber laut warnen als still leiden.
+if (!fs.existsSync(DUMP_DIR)) {
+  log('!! ACHTUNG: dumps/ fehlt — Replay-Antworten (RF-App, Altgeräte-Login-Ack) entfallen.');
+  log(`!!          Nachladen: scp -r dumps <user>@<host>:${__dirname}/ und Dienst neu starten (docs/pi-migration.md).`);
+}
+
 // ---------- Frame-Codec ----------
 const latin1 = (s) => Array.from(s, (c) => c.charCodeAt(0) & 255);
 
@@ -63,8 +73,23 @@ function decodeFrame(buf) {
 }
 
 // Frame aus Dump-Datei laden; optional extra/serial ersetzen (Session-Tags!)
+// dumps/ ist gitignored und wird separat per scp übertragen (docs/pi-migration.md)
+// — fehlt eine Datei, darf das NICHT crashen: sonst würgt ein fehlender Dump
+// z. B. das komplette Altgeräte-Login (Priming entfällt, Geräte bleiben
+// stumm). Rückgabe null + einmalige Warnung pro Datei; Aufrufer entscheiden.
+const loadReplayWarned = new Set();
 function loadReplay(file, { extra = null, serial = null } = {}) {
-  const f = decodeFrame(fs.readFileSync(path.join(DUMP_DIR, file)));
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(DUMP_DIR, file));
+  } catch (e) {
+    if (!loadReplayWarned.has(file)) {
+      loadReplayWarned.add(file);
+      log(`!! Replay-Dump fehlt: dumps/${file} (${e.code || e.message}) — per scp nachladen (docs/pi-migration.md), dann Dienst neu starten`);
+    }
+    return null;
+  }
+  const f = decodeFrame(raw);
   return encodeFrame(f.cls, f.method, f.payload, serial ?? f.serial, extra ?? f.extra);
 }
 
@@ -87,7 +112,18 @@ const REPLAY_CACHE = new Map();
 function replayFrame(key, reqExtra) {
   const r = REPLAY[key];
   if (!r) return null;
-  if (!REPLAY_CACHE.has(key)) REPLAY_CACHE.set(key, fs.readFileSync(path.join(DUMP_DIR, r.file)));
+  if (!REPLAY_CACHE.has(key)) {
+    try {
+      REPLAY_CACHE.set(key, fs.readFileSync(path.join(DUMP_DIR, r.file)));
+    } catch (e) {
+      // Wie loadReplay: fehlender Dump → null + einmalige Warnung, kein Crash
+      if (!loadReplayWarned.has(r.file)) {
+        loadReplayWarned.add(r.file);
+        log(`!! Replay-Dump fehlt: dumps/${r.file} (${e.code || e.message}) — per scp nachladen (docs/pi-migration.md), dann Dienst neu starten`);
+      }
+      return null;
+    }
+  }
   const f = decodeFrame(REPLAY_CACHE.get(key));
   return encodeFrame(f.cls, f.method, f.payload, f.serial, r.echoExtra ? reqExtra : f.extra);
 }
@@ -1546,8 +1582,16 @@ function handleDeviceFrame(ws, buf, peer) {
       announce(f.serial, true);
     }
     const loginReply = loadReplay('0030_CLOUD_GER_T_status_login_RFRFM52302210014.bin', { serial: f.serial });
-    captureFrame(loginReply, 'out', f.serial);
-    ws.send(loginReply);
+    if (loginReply) {
+      captureFrame(loginReply, 'out', f.serial);
+      ws.send(loginReply);
+    } else {
+      // Fallback ohne Dump: Ack selbst bauen — Payload-Layout aus dem Phase-1-
+      // Logger (reef-cloud.mjs): "ok" + sessionId. Ohne Ack starten die Geräte
+      // ihre Periodik auch auf das Join-Priming hin NICHT (live beobachtet).
+      send(ws, 'status', 'login', [...latin1('ok'), 0, ...latin1('local-session-0000000000000000')], f.serial);
+      log(`  → ${f.serial}: status/login-Ack generiert (Dump fehlt, Fallback ok+sessionId)`);
+    }
     const now = new Date();
     send(ws, 'set', 'time', [
       (now.getFullYear() >> 8) & 255, now.getFullYear() & 255,
@@ -1612,11 +1656,15 @@ function handleAppFrame(ws, buf, peer) {
   log(`  [${peer}] << ${key} serial="${f.serial}" extra="${f.extra}" (${buf.length} B)`);
 
   if (f.cls === 'user' && f.method === 'login') {
-    // Original-Sequenz: status/login → refresh/interface → status/tokenId (Replay)
-    ws.send(loadReplay('0013_CLOUD_APP_status_login_0000000000000000.bin'));
-    ws.send(loadReplay('0014_CLOUD_APP_refresh_interface_0000000000000000.bin'));
-    ws.send(loadReplay('0015_CLOUD_APP_status_tokenId_0000000000000000.bin'));
-    log('  → App-Login beantwortet (Replay status/login + interface + tokenId)');
+    // Original-Sequenz: status/login → refresh/interface → status/tokenId (Replay).
+    // Fehlende Dumps werden einzeln übersprungen (loadReplay → null + Warnung).
+    const seq = [
+      loadReplay('0013_CLOUD_APP_status_login_0000000000000000.bin'),
+      loadReplay('0014_CLOUD_APP_refresh_interface_0000000000000000.bin'),
+      loadReplay('0015_CLOUD_APP_status_tokenId_0000000000000000.bin'),
+    ].filter(Boolean);
+    for (const buf of seq) ws.send(buf);
+    log(`  → App-Login beantwortet (${seq.length}/3 Replay-Frames: status/login + interface + tokenId)`);
     return;
   }
   if (f.cls === 'user' && f.method === 'setFirstLogin') return; // nur loggen
@@ -1632,7 +1680,12 @@ function handleAppFrame(ws, buf, peer) {
     return;
   }
   // tankList dynamisch aus Live-Verbindungen generieren (Online-Flags aktuell)
-  if (key === 'tank/list') { ws.send(tankListFrame()); log(`  → tankList dynamisch (${devices.size} Gerät(e) online)`); return; }
+  if (key === 'tank/list') {
+    const tl = tankListFrame(); // null, wenn weder Modell noch Dump verfügbar
+    if (tl) { ws.send(tl); log(`  → tankList dynamisch (${devices.size} Gerät(e) online)`); }
+    else log('  !! tankList nicht beantwortbar — weder Tank-Modell noch Replay-Dump vorhanden');
+    return;
+  }
   // Replaybare Account-Anfragen
   const replay = replayFrame(key, f.extra);
   if (replay) { ws.send(replay); log(`  → Replay ${key}`); return; }
@@ -1696,8 +1749,10 @@ function createWssServer(port, role, frameHandler, useTls = true) {
     log(`=== ${role}-Connect: ${peer} (Subprotokoll=${ws.protocol}) ===`);
     if (role === 'APP') {
       apps.add(ws);
-      // Wie die echte Cloud: set/pingTime direkt nach Connect (serial="")
-      ws.send(loadReplay('0004_CLOUD_APP_set_pingTime_.bin'));
+      // Wie die echte Cloud: set/pingTime direkt nach Connect (serial="").
+      // Fehlt der Replay-Dump: identischen Frame selbst bauen (Layout wie beim
+      // 30-s-Intervall darunter) — die App braucht den Push zum Session-Aufbau.
+      ws.send(loadReplay('0004_CLOUD_APP_set_pingTime_.bin') ?? encodeFrame('set', 'pingTime', [0, 30], ''));
     }
     const pingInterval = setInterval(() => {
       if (ws.readyState === ws.OPEN) ws.send(encodeFrame('set', 'pingTime', [0, 30], role === 'APP' ? '' : '0000000000000000'));

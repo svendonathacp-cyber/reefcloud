@@ -163,6 +163,16 @@ else
   warn "Logs ansehen mit:              journalctl -u ${SERVICE_NAME} -n 50 --no-pager"
 fi
 
+# dumps/ ist gitignored (Mitschnitte, nie im Repo) und muss bei einer Neu-/
+# Migration separat übertragen werden — ohne sie entfallen Replay-Antworten
+# für die RF-App und das Login-Ack der Altgeräte (Priming läuft seit dem
+# loadReplay-Fallback trotzdem, aber vollständig ist es nur mit dumps/).
+if [[ ! -d "${INSTALL_DIR}/dumps" ]]; then
+  warn "dumps/ fehlt in ${INSTALL_DIR} — bei Umzug von einem bestehenden Server nachladen:"
+  warn "  scp -r dumps root@<dieser-pi>:${INSTALL_DIR}/ && systemctl restart ${SERVICE_NAME}"
+  warn "  Details: docs/pi-migration.md"
+fi
+
 # ------------------------------------------------------------ Abschluss ---
 lan_ips="$(hostname -I 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')"
 first_ip="$(echo "${lan_ips}" | cut -d' ' -f1)"
