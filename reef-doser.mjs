@@ -61,6 +61,7 @@ import { u32be, writeUtf16be } from './reef-onboard.mjs';
 
 const SETTINGS_LEN = 440;         // settings Einzelpumpe
 const SETTINGS_BROADCAST_LEN = 1757; // 1 B 0x00 + 4×439 B (Records ohne Pumpen-Byte)
+const SETTINGS_COMPACT_LEN = 1097;   // kompakte FW-Generation (s. u.)
 const STATUS_LEN = 261;
 const SCHEDULE_SLOTS = 24;
 const HISTORY_ENTRIES = 12;
@@ -182,8 +183,33 @@ function parseSettingsRecord(pl) {
   };
 }
 
-// dzRefresh/settings: 440 B (Einzelpumpe) oder 1757 B (Join-Broadcast,
-// Pumpe 0 → 4×439-B-Records ohne Pumpen-Byte, Position = Pumpe 1..4).
+// Kompaktes settings (1097 B = Pumpe 0 + Datenrest) einer anderen FW-Generation
+// — live verifiziert 03.08. an RFDZ012302130061: NUR Pumpe 1 liegt als
+// vollständiger 439-B-Broadcast-Record vor (pl[1..439]); ihr Kopf und Zeitplan
+// sind gegen die Live-Dosierhistory verifiziert (13,4 ml-Dosen alle ~144 min —
+// deckt sich mit dzRefresh/status). Der Rest des Frames (ab 440) folgt einem
+// anderen, bisher unbekannten Schema (Pumpe-2-Trümmer mit UTF-16-Name „Jod" @519,
+// Pumpen 3/4 = 0xFE-Flash-Muster) und wird NICHT geraten.
+// In dieser Generation sind auch die Felder ab autoDoseNr (Einzel-Offset 206)
+// im Pumpe-1-Record Müll — geliefert werden daher nur die verifizierten
+// Felder (Kopf bis refillTargetMl + Zeitplan). History/Name/Maske kommen bei
+// dieser Generation aus dzRefresh/status (261 B, vollständig entschlüsselt).
+function parseCompactSettings(rec439) {
+  if (!rec439 || rec439.length !== 439) return null;
+  const p = parseSettingsRecord(Buffer.concat([Buffer.from([1]), rec439]));
+  if (!p) return null;
+  const {
+    autoDoseNr, autoDoseDoneMl, autoDoseTargetMl, manualDoneMl, manualTargetMl,
+    dayCounter, manualStatus, history, weekdayMask, autoActive, skipValue, name,
+    ...verified
+  } = p;
+  return verified;
+}
+
+// dzRefresh/settings: 440 B (Einzelpumpe) oder Broadcast nach Join:
+// 1757 B = Pumpe 0 + 4×439-B-Records, 1097 B = kompakte Generation (nur
+// Pumpe 1 vollständig, s. parseCompactSettings). Records ohne Pumpen-Byte,
+// Position = Pumpe 1..4.
 export function parseDzSettings(pl) {
   if (!pl) return null;
   if (pl.length === SETTINGS_LEN) {
@@ -200,6 +226,10 @@ export function parseDzSettings(pl) {
       pumps.push(p);
     }
     return { pumps };
+  }
+  if (pl.length === SETTINGS_COMPACT_LEN && pl[0] === 0) {
+    const p = parseCompactSettings(pl.subarray(1, 440));
+    return p ? { pumps: [p] } : null;
   }
   return null;
 }

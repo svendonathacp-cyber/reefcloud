@@ -33,6 +33,7 @@ import {
   rfManualTimePayload, rfManualUpdatePayload, u32be,
 } from './reef-onboard.mjs';
 import { JebaoClient, discover as jebaoDiscover } from './reef-jebao.mjs';
+import { createFrameLog } from './reef-framelog.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -54,6 +55,13 @@ if (!fs.existsSync(DUMP_DIR)) {
   log('!! ACHTUNG: dumps/ fehlt — Replay-Antworten (RF-App, Altgeräte-Login-Ack) entfallen.');
   log(`!!          Nachladen: scp -r dumps <user>@<host>:${__dirname}/ und Dienst neu starten (docs/pi-migration.md).`);
 }
+
+// Immer-aktives Frame-Log (rotierend, logs/frames.log) + Auto-Dumps neuer
+// Geräte-Frames nach dumps/live/ — Debugging ohne Konsolen-Throttling und
+// ohne manuelle Capture-Sessions (Details: reef-framelog.mjs). Login-Frames
+// werden aus Sicherheitsgründen (Account-Key) nicht gedumpt.
+const frameLog = createFrameLog({ dir: path.join(__dirname, 'logs'), dumpDir: DUMP_DIR });
+log(`Frame-Log aktiv: ${frameLog.logFile} (Rotation 3×20 MB); Auto-Dumps → ${frameLog.liveDir}`);
 
 // ---------- Frame-Codec ----------
 const latin1 = (s) => Array.from(s, (c) => c.charCodeAt(0) & 255);
@@ -1526,6 +1534,9 @@ function handleDeviceFrame(ws, buf, peer) {
   if (/(Refresh|Report)\//.test(`${f.cls}/${f.method}`)) throttledFrameLog(peer, f, buf.length);
   else log(`  [${peer}] << ${f.cls}/${f.method} serial="${f.serial}" extra="${f.extra}" (${buf.length} B)`);
   captureFrame(buf, 'in', ws.deviceIp);
+  frameLog.logFrame({ direction: 'in', role: 'GERÄT', peer, cls: f.cls, method: f.method, serial: f.serial, extra: f.extra, frameBytes: buf.length, payload: f.payload });
+  // Auto-Dump: neuester Rohframe je Frame-Art nach dumps/live/ (Login ausgenommen)
+  frameLog.dumpFrame(buf, f);
 
   if (f.cls === 'geConnect' && f.method === 'login') {
     // Neue Firmware (1.4.x/1.5.x): JSON-Login → geReport/login + geSet/time (JSON)
@@ -1654,6 +1665,7 @@ function handleAppFrame(ws, buf, peer) {
   const f = decodeFrame(buf);
   const key = `${f.cls}/${f.method}`;
   log(`  [${peer}] << ${key} serial="${f.serial}" extra="${f.extra}" (${buf.length} B)`);
+  frameLog.logFrame({ direction: 'in', role: 'APP', peer, cls: f.cls, method: f.method, serial: f.serial, extra: f.extra, frameBytes: buf.length, payload: f.payload });
 
   if (f.cls === 'user' && f.method === 'login') {
     // Original-Sequenz: status/login → refresh/interface → status/tokenId (Replay).
@@ -1710,6 +1722,7 @@ function handleAppFrame(ws, buf, peer) {
 function send(ws, cls, method, payload, serial = '0000000000000000') {
   const buf = encodeFrame(cls, method, payload, serial);
   captureFrame(buf, 'out', ws.deviceIp || serial);
+  frameLog.logFrame({ direction: 'out', role: 'GERÄT', peer: ws.deviceIp || serial, cls, method, serial, frameBytes: buf.length, payload: Buffer.from(payload || []) });
   ws.send(buf);
 }
 

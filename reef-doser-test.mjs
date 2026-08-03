@@ -286,5 +286,48 @@ const h0 = settingsFrame(1, {
 });
 check('History: Typ 0 (frei) wird übersprungen', parseDzSettings(h0).pumps[0].history.length, 0);
 
+// --- Kompaktes settings (1097 B) — ECHTER Live-Frame von RFDZ012302130061 ---
+// (03.08.2026, Auto-Dump dumps/live/). Verifiziert gegen die Dosierhistory:
+// 13,4-ml-Dosen alle ~144 min, Kapazität 5000 ml, Kalibrierung 13.12.2025 fällig.
+const COMPACT_LIVE =
+  '00000000000007a120000000044c0d0c07e901000014e800001770000000000000000000000a00000537025d020000053c02' +
+  'ed0200000539037d020000053c040d020000006c049d000000006c052d000000006c001d000000006c00ad000000006c013d' +
+  '000000006c01cd0000000000000000000000000000000000000000010000053c0000000007ea0803111101ff00004b004800' +
+  '000000000000000000000000000000000000000000000000000000000000000007a120000000044c0d0c07e901000007d000' +
+  '000fa00000000000000000000004000003e8026702000003e803cf02000003e8053700000003e800ff000000000000000000' +
+  '000000000000000000000001000003e80000000007ea0803100f01ff00004300410000000000000000000000000000000000' +
+  '000000000000000000000000039fbc0007a12000000003e80d0c07e901000000960000012c00000000000000000000040000' +
+  '004b0271020000004b03d9020000004b0541000000004b01090000000000000000000000000000000000000000010000004b' +
+  '0000000007ea0803101901ff00004d0047000000000000000000000000000000000000000000000000000000000000000000' +
+  '002710000000049c180507e90100000000000000000000000000000000000000000000000000000000000000000000000000' +
+  '0001000000640000000007ea02161600018000004a006f006400000000000000000000000000000000000000000000000000' +
+  '00ffd3eaf7b5d3eaf7fed400fffdc3f3f601d3eabafe94eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fe' +
+  'd3eaf7fed3eaf7d9c3eaf7fed776effbd403f6fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3ea' +
+  'f7fed3eaf7fed3ebf7fed38ef7fed3eaf014d1fce1fed26af7fe99ea98feb7eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fe' +
+  'd3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3ea' +
+  'f7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fe' +
+  'd3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3ea' +
+  'f7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fe' +
+  'd3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3ea' +
+  'f7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fe' +
+  'd3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3ea' +
+  'f7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3eaf7fed3';
+const compact = parseDzSettings(Buffer.from(COMPACT_LIVE, 'hex'));
+check('Kompakt-Frame (1097 B) wird akzeptiert', compact !== null, true);
+check('Kompakt: nur Pumpe 1 (Rest-Schema unbekannt, wird nicht geraten)', compact.pumps.length, 1);
+const cp = compact.pumps[0];
+check('Kompakt: Pumpe 1', cp.index, 1);
+check('Kompakt: Kapazität 5000 ml', cp.capacityMl, 5000);
+check('Kompakt: Kalibrierdatum 13.12.2025', cp.calDate, { day: 13, month: 12, year: 2025 });
+check('Kompakt: Kalibrierung fällig', cp.calOverdue, true);
+check('Kompakt: heute 53,52 ml', cp.todayMl, 53.52);
+check('Kompakt: Ziel 60 ml', cp.targetMl, 60);
+check('Kompakt: Zeitplan-Slot 1 = 13,35 ml @10:05 (605 min)', cp.schedule[0], { ml: 13.35, minutes: 605 });
+check('Kompakt: Zeitplan-Slot 2 = 13,4 ml @12:29 (749 min)', cp.schedule[1], { ml: 13.4, minutes: 749 });
+// Felder ab autoDoseNr sind in dieser Generation Müll → werden nicht geliefert
+check('Kompakt: keine Müll-Felder (history/name/mask/autoDose)',
+  ['history', 'name', 'weekdayMask', 'autoActive', 'skipValue', 'autoDoseNr', 'dayCounter', 'manualStatus'].map((k) => k in cp),
+  [false, false, false, false, false, false, false, false]);
+
 console.log(failures ? `\n${failures} Test(s) FEHLGESCHLAGEN` : '\nAlle Doser-Tests bestanden');
 process.exit(failures ? 1 : 0);
