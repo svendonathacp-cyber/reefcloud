@@ -15,11 +15,13 @@ import {
 import { StatusDot, StatusLabel, statusOf } from './DeviceTile';
 import { Switch } from '@/components/ui/switch';
 import AutolevelSection from './AutolevelSection';
+import DoserBody from './DoserBody';
 import FlareProgramEditor from './FlareProgramEditor';
 import FlareManualSection, { FlareModeSwitch } from './FlareManualSection';
 import LevelKeeperBody from './LevelKeeperBody';
 import { useT } from '@/i18n/I18nContext';
 import type { CommandFn, DeviceSnapshot, SetDevicePropsFn, SetNicknameFn } from '@/types/reef';
+import { doserPumps } from '@/types/reef';
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = '—') => (typeof v === 'string' && v ? v : d);
@@ -110,6 +112,27 @@ function StatsRow({ dev }: { dev: DeviceSnapshot }) {
           <BigStat label={t('salinity.conductivity25')} value={fmt(dev.state.conductivityMs25)} unit="mS/cm" />
           <BigStat label={t('salinity.salinity')} value={fmt(dev.state.salinityPpt)} unit="ppt" />
           <BigStat label={t('detail.temperature')} value={fmt(dev.state.temperatureC)} unit="°C" />
+        </>
+      );
+    }
+    case 'doser': {
+      // Kopfzeile: Tages-Summe über alle Pumpen, mittlerer Füllstand, Kalibrier-Warnung
+      const pumps = doserPumps(dev);
+      const todaySum = pumps.reduce((s, p) => s + num(p.todayMl), 0);
+      const fills = pumps.filter((p) => num(p.capacityMl) > 0);
+      const fillAvg = fills.length
+        ? fills.reduce((s, p) => s + (100 * num(p.fillMl)) / num(p.capacityMl), 0) / fills.length
+        : NaN;
+      const overdue = pumps.some((p) => p.calOverdue === true);
+      return (
+        <>
+          <BigStat label={t('doser.today')} value={todaySum.toFixed(2)} unit="ml" />
+          <BigStat label={t('doser.fill')} value={Number.isFinite(fillAvg) ? fillAvg.toFixed(1) : '—'} unit="%" accent={false} />
+          <BigStat
+            label={t('doser.nextCalibration')}
+            value={overdue ? t('doser.calibrationOverdue') : 'OK'}
+            accent={!overdue}
+          />
         </>
       );
     }
@@ -462,10 +485,11 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
             </>
           )}
           {dev.family === 'level' && <LevelKeeperBody dev={dev} sendCommand={sendCommand} />}
+          {dev.family === 'doser' && <DoserBody dev={dev} now={now} sendCommand={sendCommand} />}
           {dev.family === 'levelSensor' && <LevelSensorBody dev={dev} setDeviceProps={setDeviceProps} sendCommand={sendCommand} />}
           {dev.family === 'salinity' && <SalinityBody dev={dev} sendCommand={sendCommand} />}
-          {!['basepump', 'wave', 'roller', 'flare', 'level', 'levelSensor', 'salinity'].includes(dev.family) && <GenericBody dev={dev} />}
-          {!hasControls && !['flare', 'level', 'levelSensor', 'salinity'].includes(dev.family) && (
+          {!['basepump', 'wave', 'roller', 'flare', 'level', 'doser', 'levelSensor', 'salinity'].includes(dev.family) && <GenericBody dev={dev} />}
+          {!hasControls && !['flare', 'level', 'doser', 'levelSensor', 'salinity'].includes(dev.family) && (
             <p className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
               {t('detail.readonlyNote')}
             </p>

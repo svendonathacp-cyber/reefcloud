@@ -21,6 +21,11 @@ import { createUpdater } from './reef-updater.mjs';
 import { scanWifiNetworks } from './reef-onboarding.mjs';
 import { parseSgSettings51, sgCalibrateTempPayload, SG_CALIBRATE_MAIN_PAYLOAD } from './reef-salinity.mjs';
 import {
+  parseDzRefresh, dzSetNamePayload, dzSetContainerPayload, dzSetDosesPayload,
+  dzSkipNextPayload, dzPumpPayload, dzGetSettingsPayload, dzCalibrateValuePayload,
+  dzCalibrateNotifyPayload, dzManualRefillStartPayload,
+} from './reef-doser.mjs';
+import {
   LK_STATUS_TEXT,
   parseLkSettingsExtra, parseLkStatusExtra, parseLkAlert, parseLkManualRefill,
   parseLkCircuit, parseLkCalibration, parseLkTemporary,
@@ -660,6 +665,25 @@ function updateState(serial, cls, method, payloadBuf) {
   let altParsed = null;
   {
     const pl = payloadBuf;
+    if (cls === 'dzRefresh') {
+      // Dosing (RFDZ): Parser in reef-doser.mjs liefert Patches je Pumpe —
+      // Merge in state.pumps[index-1] (flach pro Pumpe; nicht gemeldete
+      // Felder wie Kalibrierdatum/Zeitplan aus settings bleiben erhalten,
+      // weil der status-Frame sie nicht enthält).
+      const patch = parseDzRefresh(method, pl);
+      if (patch) {
+        const pumps = Array.isArray(m.state.pumps) ? m.state.pumps.slice(0, 4) : [];
+        for (const p of patch.pumps) {
+          const i = Number(p.index) - 1;
+          if (i < 0 || i > 3) continue;
+          const { index, ...fields } = p;
+          pumps[i] = { index, ...(pumps[i] || {}), ...fields };
+        }
+        m.state = { ...m.state, pumps };
+        if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+      }
+      return;
+    }
     if (cls === 'lsRefresh' && method === 'alert') {
       // 1 Byte: Zustands-Push (Onboard-JS: gleiche Code-Tabelle wie data-Byte 1).
       // Das data-Layout weicht semantisch vom Onboard-JS ab (bekannter Bruch —
@@ -838,6 +862,17 @@ function buildCommandFrame(serial, action, params) {
   const fam = m.family;
   const cur = m.state || {};
   const onOff = (v) => (v === 'on' || v === 1 || v === true ? 1 : 0);
+  // Dosing: Pumpen-Parameter 1–4 validieren (KH/CA/MG/Jod)
+  const dzPump = () => {
+    const pump = Number(params.pump);
+    if (!Number.isInteger(pump) || pump < 1 || pump > 4) throw new Error('pump 1–4 erwartet');
+    return pump;
+  };
+  const dzMl = (v, label = 'ml') => {
+    const ml = Number(v);
+    if (!Number.isFinite(ml) || ml <= 0 || ml > 100000) throw new Error(`${label} 0–100000 erwartet`);
+    return ml;
+  };
   switch (`${fam}:${action}`) {
     case 'basepump:setSpeed':
       // bpSet/settings: ALLE Felder mitschicken (aktuelle Werte als Basis)
@@ -998,6 +1033,78 @@ function buildCommandFrame(serial, action, params) {
       if (!dir) throw new Error("direction 'low'|'high' erwartet");
       return ['lsTrigger', dir, []];
     }
+    // ---------- Dosing (RFDZ, Onboard-Protokoll — Frames aus dem Geräte-JS) ----------
+    case 'doser:setName': {
+      // dzSet/name: [pump][Name UTF-16BE][00 00] (max. 16 Zeichen)
+      const pump = dzPump();
+      const name = String(params.name ?? '').trim();
+      if (!name || [...name].length > 16) throw new Error('name 1–16 Zeichen erwartet');
+      return ['dzSet', 'name', dzSetNamePayload(pump, name)];
+    }
+    case 'doser:setContainer': {
+      // dzSet/container: [pump][u32BE Füllstand ×100][u32BE Kapazität ×100]
+      const pump = dzPump();
+      const currentMl = Number(params.currentMl);
+      const capacityMl = dzMl(params.capacityMl, 'capacityMl');
+      if (!Number.isFinite(currentMl) || currentMl < 0 || currentMl > 100000) {
+        throw new Error('currentMl 0–100000 erwartet');
+      }
+      return ['dzSet', 'container', dzSetContainerPayload(pump, currentMl, capacityMl)];
+    }
+    case 'doser:setSchedule': {
+      // dzSet/doses: [pump][count][je Slot u32BE ml ×100 + u16BE Minute][K u8]
+      const pump = dzPump();
+      const slots = Array.isArray(params.slots) ? params.slots : [];
+      if (!slots.length || slots.length > 24) throw new Error('slots 1–24 erwartet');
+      const clean = slots.map((s) => {
+        const ml = dzMl(s?.ml, 'slot ml');
+        const minutes = Number(s?.minutes);
+        if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) {
+          throw new Error('slot minutes 0–1439 erwartet');
+        }
+        return { ml, minutes };
+      }).sort((a, b) => a.minutes - b.minutes);
+      const mask = Number(params.weekdayMask);
+      if (!Number.isInteger(mask) || mask < 0 || mask > 127) throw new Error('weekdayMask 0–127 erwartet');
+      return ['dzSet', 'doses', dzSetDosesPayload(pump, clean, mask)];
+    }
+    case 'doser:skipNext': {
+      // dzSet/skipNext: [pump][Wert u8, 0..100] — Semantik des Werts (vermutlich
+      // Prozent) nicht verifiziert; Default 100 wie das Geräte-UI-Maximum.
+      const pump = dzPump();
+      const v = params.value === undefined ? 100 : Number(params.value);
+      if (!Number.isInteger(v) || v < 0 || v > 100) throw new Error('value 0–100 erwartet');
+      return ['dzSet', 'skipNext', dzSkipNextPayload(pump, v)];
+    }
+    case 'doser:cancelSkip':
+      return ['dzSet', 'cancelSkip', dzPumpPayload(dzPump())];
+    case 'doser:calibrateStart':
+      return ['dzCalibration', 'start', dzPumpPayload(dzPump())];
+    case 'doser:calibrateStop':
+      return ['dzCalibration', 'stop', dzPumpPayload(dzPump())];
+    case 'doser:circuitStart':
+      return ['dzCalibration', 'circuitStart', dzPumpPayload(dzPump())];
+    case 'doser:circuitStop':
+      return ['dzCalibration', 'circuitStop', dzPumpPayload(dzPump())];
+    case 'doser:calibrateValue': {
+      // dzCalibration/value: [pump][u32BE gemessene Menge ×100]
+      const pump = dzPump();
+      return ['dzCalibration', 'value', dzCalibrateValuePayload(pump, dzMl(params.ml))];
+    }
+    case 'doser:calibrateNotification': {
+      // dzCalibration/notification: [pump][Intervall u8: 0=1W, 1=2W, 2=1M, 3=3M]
+      const pump = dzPump();
+      const idx = Number(params.interval);
+      if (!Number.isInteger(idx) || idx < 0 || idx > 3) throw new Error('interval 0–3 erwartet');
+      return ['dzCalibration', 'notification', dzCalibrateNotifyPayload(pump, idx)];
+    }
+    case 'doser:manualDose': {
+      // dzManualRefill/start: Modus 0 = sofort dosieren (11 B)
+      const pump = dzPump();
+      return ['dzManualRefill', 'start', dzManualRefillStartPayload(pump, dzMl(params.ml))];
+    }
+    case 'doser:manualStop':
+      return ['dzManualRefill', 'stop', dzPumpPayload(dzPump())];
     // ---------- Reef Flare (RFRF, Onboard-Protokoll der lokalen Firmware) ----------
     case 'flare:setManual': {
       // rfManual/update: komplette Preset-Liste (Report-Layout). Basis = die
@@ -1044,6 +1151,24 @@ function buildCommandFrame(serial, action, params) {
   }
 }
 
+// Nach Schreibbefehlen an die Dosierpumpe frische Einstellungen anfordern
+// (dzGet/settings [pump]), damit der State zeitnah das Geräte-Echo abbildet —
+// Muster wie der rfPrecise/pointer-Sync nach dem Programm-Upload.
+function scheduleDoserRefresh(serial, action, ap) {
+  if (!String(action).startsWith('doser:')) return;
+  const pump = Number(ap?.pump);
+  if (!Number.isInteger(pump) || pump < 1 || pump > 4) return;
+  setTimeout(() => {
+    const dev = devices.get(serial);
+    if (dev && dev.readyState === dev.OPEN) {
+      const buf = encodeFrame('dzGet', 'settings', dzGetSettingsPayload(pump), serial);
+      captureFrame(buf, 'out', serial);
+      dev.send(buf);
+      log(`  → dzGet/settings [${pump}] angefordert (Refresh nach ${action})`);
+    }
+  }, 1500);
+}
+
 async function handleTunnelRequest(method, params) {
   if (method === 'listDevices') {
     return [...deviceMeta.keys()].map(snapshot);
@@ -1057,6 +1182,7 @@ async function handleTunnelRequest(method, params) {
     const buf = encodeFrame(cls, mth, payload, serial);
     captureFrame(buf, 'out', serial);
     dev.send(buf);
+    scheduleDoserRefresh(serial, action, ap);
     return { ok: true };
   }
   if (method === 'rawCommand') {
@@ -1235,7 +1361,7 @@ function handleDeviceFrame(ws, buf, peer) {
     // ohne Join fließen Daten nur, solange eine App gejoint ist. Präfix je Familie:
     // flare=rf, salinity=sg, thermo=tc, levelSensor=ls, level=lk (Level Keeper).
     // Ein falsches Präfix wäre unkritisch: das Gerät ignoriert unbekannte Klassen.
-    const JOIN_PREFIX = { flare: 'rf', salinity: 'sg', thermo: 'tc', levelSensor: 'ls', level: 'lk' };
+    const JOIN_PREFIX = { flare: 'rf', salinity: 'sg', thermo: 'tc', levelSensor: 'ls', level: 'lk', doser: 'dz' };
     if (f.serial && f.serial !== '0000000000000000') {
       const jp = JOIN_PREFIX[metaFor(f.serial).family];
       if (jp) {
@@ -1561,6 +1687,7 @@ const webServer = http.createServer(async (req, res) => {
       const buf = encodeFrame(cls, mth, payload, serial);
       captureFrame(buf, 'out', serial);
       dev.send(buf);
+      scheduleDoserRefresh(serial, action, ap);
       log(`  [webui] command ${action} → ${serial}: ${cls}/${mth}`);
       return webSendJson(res, { ok: true });
     }

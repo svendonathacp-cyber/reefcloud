@@ -3,6 +3,7 @@ import { Progress } from '@/components/ui/progress';
 import { useT } from '@/i18n/I18nContext';
 import { Ago, deviceDisplayName, FAMILY_META, LK_STATUS_KEYS, WAVE_MODE_KEYS } from './DeviceCard';
 import type { DeviceSnapshot } from '@/types/reef';
+import { doserPumps } from '@/types/reef';
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = '—') => (typeof v === 'string' && v ? v : d);
@@ -157,6 +158,33 @@ function TileValues({ dev }: { dev: DeviceSnapshot }) {
             {t('level.alarm')}
           </span>
         )}
+      </div>
+    );
+  }
+
+  if (dev.family === 'doser') {
+    // Dosing: je Pumpe eine kompakte Zeile (Name, heute/Ziel ml, Füllstand %)
+    const pumps = doserPumps(dev).sort((a, b) => a.index - b.index);
+    if (!pumps.length) {
+      return <p className="py-1.5 text-[11px] italic text-muted-foreground/70">{t('status.noLiveData')}</p>;
+    }
+    return (
+      <div className="space-y-1">
+        {pumps.slice(0, 4).map((p) => {
+          const fill = num(p.fillMl, NaN);
+          const capacity = num(p.capacityMl, NaN);
+          const pct = Number.isFinite(fill) && Number.isFinite(capacity) && capacity > 0
+            ? (100 * fill) / capacity : null;
+          return (
+            <div key={p.index} className="flex items-center justify-between gap-2 text-[13px]">
+              <span className="truncate text-muted-foreground">{p.name}</span>
+              <span className="shrink-0 font-mono text-[11px] font-medium" style={{ color: meta.color }}>
+                {num(p.todayMl).toFixed(2)}/{num(p.targetMl).toFixed(2)} ml
+                {pct !== null && <span className="text-muted-foreground"> · {pct.toFixed(1)} %</span>}
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
   }
