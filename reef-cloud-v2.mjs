@@ -1405,6 +1405,14 @@ async function handleJebaoCommand(serial, action, ap = {}) {
       updates = { FeedTime: minutes };
       break;
     }
+    case 'setLinkage': {
+      // Kopplung: 0=eigenständig, 1=Master, 2=Slave — als Slave ignoriert die
+      // Pumpe lokale Modus-/Futter-Writes (live an JEBAO-12C648 verifiziert)
+      const linkage = Number(ap.linkage ?? ap.value);
+      if (!Number.isInteger(linkage) || linkage < 0 || linkage > 2) throw new Error('linkage 0–2 erwartet');
+      updates = { Linkage: linkage };
+      break;
+    }
     default: throw new Error(`unknown action ${action} für family jebao`);
   }
   await client.writeDatapoints(updates);

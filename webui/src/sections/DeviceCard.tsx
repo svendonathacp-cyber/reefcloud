@@ -251,6 +251,25 @@ function JebaoBody({ dev, sendCommand }: { dev: DeviceSnapshot; sendCommand: Com
         ))}
       </div>
 
+      {/* Kopplung: als Slave (2) ignoriert die Pumpe lokale Modus-/Futter-Writes —
+          deshalb auswählbar + Warn-Badge */}
+      <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+        <span className="text-muted-foreground">{t('jebao.linkage')}</span>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[0, 1, 2].map((l) => (
+            <Button key={l} size="sm" variant={linkage === l ? 'default' : 'outline'}
+              disabled={!dev.online || busy !== null || linkage === l}
+              className="px-2 text-xs"
+              onClick={() => void run('setLinkage', { linkage: l }, t(JEBAO_LINKAGE_KEYS[l]))}>
+              {t(JEBAO_LINKAGE_KEYS[l])}
+            </Button>
+          ))}
+        </div>
+      </div>
+      {linkage === 2 && (
+        <p className="mt-1.5 text-xs text-destructive">{t('jebao.slaveHint')}</p>
+      )}
+
       <div className="mt-4 space-y-3">
         <PctSlider label={t('jebao.flow')} value={num(dev.state.flow)} disabled={!dev.online || busy !== null}
           onCommit={(v) => void run('setFlow', { flow: v }, `${t('jebao.flow')} ${v} %`)} />
