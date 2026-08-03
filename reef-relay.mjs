@@ -85,8 +85,47 @@ function logFrame(dir, buf) {
 const cert = fs.readFileSync(path.join(__dirname, 'reef-cloud-cert.pem'));
 const key = fs.readFileSync(path.join(__dirname, 'reef-cloud-key.pem'));
 
+// ---------- HTTP-Proxy (REST neben dem WebSocket) ----------
+// Die App macht neben WS evtl. normale HTTPS-Requests. Ohne 'request'-Handler
+// würde der Server die Verbindung einfach hängen lassen → App wartet ewig.
+// Deshalb: alles Nicht-WS protokollieren und an die echte Cloud durchreichen.
+function proxyHttpRequest(req, res, port, plain) {
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    const body = Buffer.concat(chunks);
+    log(`  HTTP→CLOUD ${req.method} ${req.url} (${body.length} B, Port ${port})`);
+    if (body.length) log(`      body: ${body.toString('utf8').replace(/\0/g, '·').slice(0, 800)}`);
+    const mod = plain ? http : https;
+    const creq = mod.request({
+      host: CLOUD_HOSTS[0], port, path: req.url, method: req.method,
+      headers: { ...req.headers, host: 'api.reeffactory.com' },
+      servername: 'api.reeffactory.com', rejectUnauthorized: false,
+      timeout: 15000,
+    }, (cres) => {
+      const cchunks = [];
+      cres.on('data', (c) => cchunks.push(c));
+      cres.on('end', () => {
+        const cbody = Buffer.concat(cchunks);
+        log(`  CLOUD→HTTP ${cres.statusCode} ${req.method} ${req.url} (${cbody.length} B)`);
+        if (cbody.length) log(`      body: ${cbody.toString('utf8').replace(/\0/g, '·').slice(0, 800)}`);
+        res.writeHead(cres.statusCode, cres.headers);
+        res.end(cbody);
+      });
+    });
+    creq.on('timeout', () => { log(`!! HTTP-Proxy Timeout: ${req.method} ${req.url}`); creq.destroy(); });
+    creq.on('error', (e) => {
+      log(`!! HTTP-Proxy-Fehler: ${e.message}`);
+      if (!res.headersSent) res.writeHead(502);
+      res.end();
+    });
+    creq.end(body);
+  });
+}
+
 function createRelayServer(port, plain = false) {
-  const server = plain ? http.createServer() : https.createServer({ cert, key });
+  const onRequest = (req, res) => proxyHttpRequest(req, res, port, plain);
+  const server = plain ? http.createServer(onRequest) : https.createServer({ cert, key }, onRequest);
   if (!plain) server.on('tlsClientError', (err, socket) => {
     log(`!! TLS-Handshake (Client→Relay:${port}) fehlgeschlagen von ${socket.remoteAddress}: ${err.message}`);
   });
