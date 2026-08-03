@@ -1,7 +1,7 @@
 import { Activity, ChevronRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useT } from '@/i18n/I18nContext';
-import { Ago, deviceDisplayName, FAMILY_META, LK_STATUS_KEYS, WAVE_MODE_KEYS } from './DeviceCard';
+import { Ago, deviceDisplayName, FAMILY_META, JEBAO_MODE_KEYS, LK_STATUS_KEYS, WAVE_MODE_KEYS } from './DeviceCard';
 import type { DeviceSnapshot } from '@/types/reef';
 import { doserPumps } from '@/types/reef';
 
@@ -73,6 +73,23 @@ function TileValues({ dev }: { dev: DeviceSnapshot }) {
       <div className="flex items-end justify-between gap-3">
         <BigValue value={num(dev.state.speed)} unit="%" label={modeKey ? t(modeKey) : t('wave.modeN', { n: m })} color={meta.color} />
         {feeding && <p className="pb-0.5 text-[11px] font-medium text-amber-400">{t('wave.feedingActive')}</p>}
+      </div>
+    );
+  }
+
+  if (dev.family === 'jebao') {
+    // Jebao-Wavemaker: groß Flow % + Modus, klein Fütterungs-Hinweis
+    const m = num(dev.state.mode, -1);
+    const modeKey = JEBAO_MODE_KEYS[m];
+    const feeding = dev.state.feed === true;
+    const hasFaults = Array.isArray(dev.state.faults) && dev.state.faults.length > 0;
+    return (
+      <div className="flex items-end justify-between gap-3">
+        <BigValue value={num(dev.state.flow)} unit="%" label={modeKey ? t(modeKey) : t('family.jebao')} color={meta.color} />
+        <div className="pb-0.5 text-right text-[11px] leading-snug">
+          {feeding && <p className="font-medium text-amber-400">{t('jebao.feedActive')}</p>}
+          {hasFaults && <p className="font-medium text-red-400">{t('jebao.faultsActive')}</p>}
+        </div>
       </div>
     );
   }

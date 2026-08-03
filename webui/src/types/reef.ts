@@ -114,6 +114,33 @@ export interface FlareProgram {
   points: FlareProgramPoint[];
 }
 
+// ---------- Jebao-Wavemaker (Gizwits-LAN) — gespiegelt zu reef-jebao.mjs ----------
+
+// Konfigurierter Eintrag aus jebao.json (GET/POST/DELETE /api/jebao)
+export interface JebaoPump {
+  ip: string;
+  name: string;
+  serial?: string;
+  mac?: string;
+  productKey?: string;
+  firmware?: string;
+}
+
+// Discovery-Ergebnis (GET /api/jebao/scan)
+export interface JebaoDiscovered {
+  ip: string;
+  did: string;
+  mac: string;
+  firmware: string;
+  productKey: string;
+}
+
+export interface JebaoScanResponse {
+  devices: JebaoDiscovered[];
+  error?: string;
+  scannedAt: number; // Epoch-ms
+}
+
 // ---------- Dosing (RFDZ) — gespiegelt zum Parser in reef-doser.mjs ----------
 
 export interface DoserScheduleSlot {

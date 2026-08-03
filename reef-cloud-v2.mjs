@@ -32,6 +32,7 @@ import {
   parseRfManualTime, parseRfManualData, parseRfOffData,
   rfManualTimePayload, rfManualUpdatePayload, u32be,
 } from './reef-onboard.mjs';
+import { JebaoClient, discover as jebaoDiscover } from './reef-jebao.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -263,16 +264,19 @@ const FAMILY = {
   RFTV: 'thermoview', RFSF: 'feeder', RFST: 'smarttester', RFTM: 'tds',
 };
 function familyOf(serial) {
+  // Jebao-Wavemaker: eigene Serial-Familie (Gizwits-LAN, reef-jebao.mjs)
+  if (serial.startsWith('JEBAO-')) return 'jebao';
   return FAMILY[serial.slice(0, 4)] || FAMILY[serial.slice(0, 5)] || 'unknown';
 }
 
 // Geräte-Meta für Snapshots: serial → { family, firmware, ip, state, lastSeen,
 // online, reachable, lastProbe } (reachable/lastProbe vom Hello-Ping, s.u.)
+// name: Anzeigename für Geräte ohne Tank-Modell-Eintrag (z. B. Jebao aus jebao.json)
 const deviceMeta = new Map();
 
 function metaFor(serial) {
   if (!deviceMeta.has(serial)) {
-    deviceMeta.set(serial, { family: familyOf(serial), firmware: null, ip: null, state: {}, lastSeen: 0, online: false, reachable: null, lastProbe: 0 });
+    deviceMeta.set(serial, { family: familyOf(serial), firmware: null, ip: null, name: null, state: {}, lastSeen: 0, online: false, reachable: null, lastProbe: 0 });
   }
   return deviceMeta.get(serial);
 }
@@ -431,6 +435,7 @@ async function probeOfflineDevices() {
   try {
     for (const [serial, m] of deviceMeta) {
       if (devices.has(serial)) continue; // eingeloggt = online, kein Probe nötig
+      if (jebaoClients.has(serial)) continue; // Jebao: eigener LAN-Client managt Verbindung + Erreichbarkeit
       const ip = (m.ip || '').replace('::ffff:', '');
       if (!ip) continue;                 // ohne bekannte IP kein Probe möglich
       const [p80, p443] = await Promise.all([probeTcp(ip, 80), probeTcp(ip, 443)]);
@@ -453,10 +458,11 @@ setTimeout(probeOfflineDevices, 5_000).unref(); // erster Lauf kurz nach Start
 
 function snapshot(serial) {
   const m = metaFor(serial);
-  const online = devices.has(serial); // snapshot() läuft erst zur Laufzeit (devices ist später deklariert — sicher)
+  // Jebao-Pumpen sind keine WS-Clients — ihr Online-Status kommt vom LAN-Client
+  const online = devices.has(serial) || jebaoOnline.has(serial);
   return {
     serial,
-    name: deviceName(serial),
+    name: deviceName(serial) ?? m.name ?? null,
     ...(customNames.has(serial) ? { customName: customNames.get(serial) } : {}),
     ip: (m.ip || '').replace('::ffff:', ''),
     family: m.family,
@@ -1175,6 +1181,12 @@ async function handleTunnelRequest(method, params) {
   }
   if (method === 'command') {
     const { serial, action, params: ap = {} } = params;
+    // Jebao-Branch: Gizwits-LAN-Client, nicht das RF-Frame-Protokoll
+    if (isJebaoTarget(serial, action)) {
+      const r = await handleJebaoCommand(serial, action, ap);
+      log(`  [tunnel] jebao command ${action} → ${serial}`);
+      return r;
+    }
     const dev = devices.get(serial);
     if (!dev || dev.readyState !== dev.OPEN) throw new Error(`Gerät ${serial} nicht verbunden`);
     const [cls, mth, payload] = buildCommandFrame(serial, action, ap);
@@ -1241,6 +1253,189 @@ const autolevel = createAutolevel({
 // Auto-Update über das Git-Repo (siehe reef-updater.mjs): täglicher Check
 // gegen origin/main, Installation nur manuell aus der UI angestoßen.
 const updater = createUpdater({ dir: __dirname, log });
+
+// ====================================================================
+// Jebao-Strömungspumpen (Gizwits-LAN, reef-jebao.mjs)
+// ====================================================================
+// Konfiguration: jebao.json im Server-Verzeichnis (Laufzeitdaten, .gitignore —
+// Muster wie names.json/device-ips.json; Vorlage: jebao.example.json):
+//   [{ "ip": "…", "name": "…", "productKey": "…" (optional) }]
+// Fehlende/defekte Datei = keine Jebao-Geräte (tolerant).
+// Serial-Schema: "JEBAO-" + MAC-Suffix (z. B. JEBAO-12C648), aus der gerichteten
+// Discovery gelernt und in jebao.json zurückgeschrieben; Fallback (Pumpe offline
+// beim Start): "JEBAO-" + IP mit Bindestrichen.
+// Die Pumpe ist KEIN WS-Client — Online/Offline läuft über jebaoOnline und die
+// Events des JebaoClient (connect/disconnect), nicht über die devices-Registry.
+const JEBAO_FILE = path.join(__dirname, 'jebao.json');
+const jebaoClients = new Map(); // serial → JebaoClient
+const jebaoOnline = new Set();  // Serials mit aktivem Login (Keepalive läuft)
+let jebaoConfig = [];
+try {
+  const raw = JSON.parse(fs.readFileSync(JEBAO_FILE, 'utf8'));
+  if (Array.isArray(raw)) {
+    jebaoConfig = raw
+      .filter((e) => e && typeof e.ip === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(e.ip))
+      .map((e) => ({
+        ip: String(e.ip),
+        name: String(e.name ?? '').slice(0, 40),
+        ...(e.serial ? { serial: String(e.serial) } : {}),
+        ...(e.mac ? { mac: String(e.mac) } : {}),
+        ...(e.productKey ? { productKey: String(e.productKey) } : {}),
+        ...(e.firmware ? { firmware: String(e.firmware) } : {}),
+      }));
+  }
+  if (jebaoConfig.length) log(`Jebao: ${jebaoConfig.length} Pumpe(n) aus jebao.json geladen`);
+} catch { /* Datei optional oder defekt → ohne Jebao-Geräte starten */ }
+
+let jebaoSaveTimer = null;
+function saveJebaoConfig() {
+  // Entprellt + atomar (Muster saveIps)
+  if (jebaoSaveTimer) return;
+  jebaoSaveTimer = setTimeout(() => {
+    jebaoSaveTimer = null;
+    try {
+      const tmp = JEBAO_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(jebaoConfig, null, 2) + '\n');
+      fs.renameSync(tmp, JEBAO_FILE);
+    } catch (e) { log(`!! jebao.json nicht geschrieben: ${e.message}`); }
+  }, 500);
+  jebaoSaveTimer.unref();
+}
+
+const jebaoSerialFromMac = (mac) => 'JEBAO-' + mac.replace(/:/g, '').slice(-6).toUpperCase();
+const jebaoFallbackSerial = (ip) => 'JEBAO-' + ip.replace(/\./g, '-');
+
+// Jebao-Status (dekodiert) in den Geräte-State spiegeln — selbe announce/
+// saveStates-Strecke wie die WS-Geräte.
+function jebaoApplyStatus(serial, st) {
+  const m = metaFor(serial);
+  const before = JSON.stringify(m.state);
+  m.state = { ...m.state, ...st };
+  m.lastSeen = Date.now();
+  if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+}
+
+// Identität per gerichteter Discovery lernen (MAC → Serial, Firmware) und
+// Client starten. Fehler (Pumpe offline) sind tolerant — der Client reconnectet.
+async function startJebaoPump(entry) {
+  let serial = entry.serial || null;
+  try {
+    const found = await jebaoDiscover({ ip: entry.ip, timeoutMs: 1500, retries: 2 });
+    const d = found.find((x) => x.ip === entry.ip) || found[0];
+    if (d && d.mac) {
+      serial = jebaoSerialFromMac(d.mac);
+      let changed = false;
+      if (entry.serial !== serial) { entry.serial = serial; changed = true; }
+      if (entry.mac !== d.mac) { entry.mac = d.mac; changed = true; }
+      if (d.productKey && entry.productKey !== d.productKey) { entry.productKey = d.productKey; changed = true; }
+      if (d.firmware && entry.firmware !== d.firmware) { entry.firmware = d.firmware; changed = true; }
+      if (changed) saveJebaoConfig();
+    }
+  } catch { /* Discovery optional — Fallback-Serial unten */ }
+  if (!serial) serial = jebaoFallbackSerial(entry.ip);
+  const m = metaFor(serial);
+  m.family = 'jebao';
+  m.name = entry.name || m.name;
+  m.ip = entry.ip;
+  if (entry.firmware) m.firmware = entry.firmware;
+  if (jebaoClients.has(serial)) return serial; // Doppelstart vermeiden
+  const client = new JebaoClient(entry.ip);
+  jebaoClients.set(serial, client);
+  client.on('connect', () => {
+    jebaoOnline.add(serial);
+    const mm = metaFor(serial);
+    mm.reachable = true;
+    mm.lastSeen = Date.now();
+    log(`Jebao ${serial} (${entry.ip}) verbunden`);
+    announce(serial, true);
+  });
+  client.on('status', (st) => jebaoApplyStatus(serial, st));
+  client.on('disconnect', () => {
+    jebaoOnline.delete(serial);
+    const mm = metaFor(serial);
+    mm.reachable = false;
+    log(`Jebao ${serial} (${entry.ip}) getrennt — Reconnect mit Backoff läuft`);
+    announce(serial, true);
+  });
+  client.on('error', (e) => log(`!! Jebao ${serial} (${entry.ip}): ${e.message}`));
+  client.connect(); // Verbindungsschleife — wirft nicht (Fehler via Events)
+  return serial;
+}
+
+function stopJebaoPump(entry) {
+  for (const [serial, client] of jebaoClients) {
+    if (client.ip !== entry.ip) continue;
+    client.close();
+    jebaoClients.delete(serial);
+    jebaoOnline.delete(serial);
+    deviceMeta.delete(serial); // aus Geräteliste/Tunnel entfernen
+    log(`Jebao ${serial} (${entry.ip}) entfernt`);
+  }
+}
+
+// Befehls-Dispatch für jebao:* — NICHT über buildCommandFrame (das ist das
+// RF-5-Felder-Protokoll). Aktionen (Präfix jebao: optional): setPower {on},
+// setMode {mode 0–3}, setFlow {0–100}, setFrequency {0–100}, setFeed {on},
+// setFeedTime {minutes 1–255}. Nach dem Write Status zur Bestätigung lesen.
+async function handleJebaoCommand(serial, action, ap = {}) {
+  const client = jebaoClients.get(serial);
+  if (!client || !client.connected) throw new Error(`Jebao-Pumpe ${serial} nicht verbunden`);
+  const act = String(action).replace(/^jebao:/, '');
+  const onOff = (v) => v === true || v === 1 || v === '1' || v === 'on';
+  const pct = (v, label) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > 100) throw new Error(`${label} 0–100 erwartet`);
+    return n;
+  };
+  let updates;
+  switch (act) {
+    case 'setPower': updates = { SwitchON: onOff(ap.on) }; break;
+    case 'setMode': {
+      const mode = Number(ap.mode);
+      if (!Number.isInteger(mode) || mode < 0 || mode > 3) throw new Error('mode 0–3 erwartet');
+      updates = { Mode: mode };
+      break;
+    }
+    case 'setFlow': updates = { Flow: pct(ap.flow ?? ap.value, 'flow') }; break;
+    case 'setFrequency': updates = { Frequency: pct(ap.frequency ?? ap.value, 'frequency') }; break;
+    case 'setFeed': updates = { FeedSwitch: onOff(ap.on) }; break;
+    case 'setFeedTime': {
+      const minutes = Number(ap.minutes);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 255) throw new Error('minutes 1–255 erwartet');
+      updates = { FeedTime: minutes };
+      break;
+    }
+    default: throw new Error(`unknown action ${action} für family jebao`);
+  }
+  await client.writeDatapoints(updates);
+  // Bestätigung: Status frisch lesen (die Pumpe bestätigt mit 0x94, der
+  // Voll-Status aus 0x90/0x91 ist die zuverlässigere Quelle fürs UI)
+  setTimeout(() => client.readStatus().catch((e) => log(`!! Jebao ${serial}: Status-Refresh nach ${act}: ${e.message}`)), 400);
+  return { ok: true };
+}
+
+const isJebaoTarget = (serial, action) =>
+  String(action).startsWith('jebao:') || deviceMeta.get(serial)?.family === 'jebao';
+
+// Scan-Endpunkt-Helfer: geteilte In-Flight-Promise (parallele UI-Requests
+// warten auf dieselbe Discovery), Broadcast im LAN.
+let jebaoScanInflight = null;
+function jebaoScan() {
+  if (!jebaoScanInflight) {
+    jebaoScanInflight = (async () => {
+      try {
+        const devices = await jebaoDiscover({ timeoutMs: 2500, retries: 3 });
+        return { devices, scannedAt: Date.now() };
+      } catch (e) {
+        return { devices: [], error: e.message, scannedAt: Date.now() };
+      }
+    })().finally(() => { jebaoScanInflight = null; });
+  }
+  return jebaoScanInflight;
+}
+
+// Beim Start alle konfigurierten Pumpen verbinden (async, Fehler nur im Log)
+for (const entry of jebaoConfig) startJebaoPump(entry);
 
 // Self-Exit nach Update/Neustart: erst antworten, dann ~1 s später beenden.
 // Unter systemd (Restart=always, deploy/reef-cloud.service) kommt der Server
@@ -1548,6 +1743,10 @@ createWssServer(80, 'GERÄT', handleDeviceFrame, false);
 //   POST /api/command  { serial, action, params } → Steuerung wie Tunnel-command
 //   GET  /api/capture  → { capture, frames }      POST /api/capture { on } → Schalter
 //   GET  /api/onboarding/scan → { networks: [{ssid, signal, rfLike}], scannedAt } (WLAN-Scan am Host)
+//   GET  /api/jebao → konfigurierte Jebao-Pumpen (jebao.json)
+//   POST /api/jebao { ip, name?, productKey? } → Pumpe hinzufügen + verbinden
+//   DELETE /api/jebao { ip } → Pumpe entfernen
+//   GET  /api/jebao/scan → { devices: [{ip, did, mac, firmware, productKey}], scannedAt } (UDP-Discovery)
 //   GET  /api/update/status → Update-Status (supported, current, behind, latestMsg, lastCheck, checking, updating, autoRestart)
 //   POST /api/update/check → Update-Check sofort ausführen, Status zurück
 //   POST /api/update/install → Update installieren (nur behind>0): pull --ff-only + npm install, dann Self-Exit
@@ -1681,6 +1880,12 @@ const webServer = http.createServer(async (req, res) => {
     }
     if (u.pathname === '/api/command' && req.method === 'POST') {
       const { serial, action, params: ap = {} } = JSON.parse(await webReadBody(req) || '{}');
+      // Jebao-Branch: Gizwits-LAN-Client, nicht das RF-Frame-Protokoll
+      if (isJebaoTarget(serial, action)) {
+        const r = await handleJebaoCommand(serial, action, ap);
+        log(`  [webui] jebao command ${action} → ${serial}`);
+        return webSendJson(res, r);
+      }
       const dev = devices.get(serial);
       if (!dev || dev.readyState !== dev.OPEN) throw new Error(`Gerät ${serial} nicht verbunden`);
       const [cls, mth, payload] = buildCommandFrame(serial, action, ap);
@@ -1735,6 +1940,46 @@ const webServer = http.createServer(async (req, res) => {
         return webSendJson(res, { capture: captureOn });
       }
       return webSendJson(res, { capture: captureOn, frames: captureBuffer.slice() });
+    }
+    if (u.pathname === '/api/jebao' && req.method === 'GET') {
+      // Konfigurierte Jebao-Pumpen (jebao.json)
+      return webSendJson(res, { pumps: jebaoConfig.map((e) => ({ ...e })) });
+    }
+    if (u.pathname === '/api/jebao' && req.method === 'POST') {
+      // Pumpe hinzufügen: { ip, name?, productKey? } — speichert jebao.json
+      // und verbindet sofort (Identität via gerichteter Discovery).
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const ip = String(body.ip || '').trim();
+      if (!/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ip) || ip.split('.').some((o) => Number(o) > 255)) {
+        throw new Error('ip ungültig (IPv4 erwartet)');
+      }
+      if (jebaoConfig.some((e) => e.ip === ip)) throw new Error('Pumpe mit dieser IP bereits konfiguriert');
+      const name = String(body.name ?? '').replace(/[<>&]/g, '').trim().slice(0, 40);
+      const entry = { ip, name, ...(body.productKey ? { productKey: String(body.productKey).slice(0, 64) } : {}) };
+      jebaoConfig.push(entry);
+      saveJebaoConfig();
+      startJebaoPump(entry); // async — Fehler landen im Log, nicht in der API
+      log(`  [webui] Jebao-Pumpe hinzugefügt: ${ip}${name ? ` ("${name}")` : ''}`);
+      return webSendJson(res, { ok: true, pump: { ...entry } });
+    }
+    if (u.pathname === '/api/jebao' && req.method === 'DELETE') {
+      // Pumpe entfernen: { ip } — Client schließen, Config + Geräteliste bereinigen
+      const body = JSON.parse(await webReadBody(req) || '{}');
+      const ip = String(body.ip || '').trim();
+      const idx = jebaoConfig.findIndex((e) => e.ip === ip);
+      if (idx < 0) throw new Error('Pumpe nicht gefunden');
+      const [entry] = jebaoConfig.splice(idx, 1);
+      saveJebaoConfig();
+      stopJebaoPump(entry);
+      log(`  [webui] Jebao-Pumpe entfernt: ${ip}`);
+      return webSendJson(res, { ok: true });
+    }
+    if (u.pathname === '/api/jebao/scan' && req.method === 'GET') {
+      // UDP-Discovery (Gizwits 12414) für den „Pumpe hinzufügen"-Dialog.
+      // Dauert bis zu ~2,5 s; parallele Requests teilen denselben Lauf.
+      const payload = await jebaoScan();
+      log(`  [webui] jebao/scan: ${payload.error ? `fehlgeschlagen: ${payload.error}` : `${payload.devices.length} Gerät(e) gefunden`}`);
+      return webSendJson(res, payload);
     }
     if (u.pathname === '/api/autolevel') {
       // Ablaufschacht-Stabilisierung: Status + History lesen, Config ändern.
