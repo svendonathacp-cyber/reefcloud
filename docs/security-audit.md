@@ -271,3 +271,19 @@ Owner-Entscheidung (siehe §2/§3).
 3. Optional: README-Hinweis zu Credentials in Logs/Dumps/Captures (§6),
    `chmod 600 reef-cloud-key.pem` für Altbestand prüfen (§6),
    try/catch-Wrapper in `reef-cloud.mjs`/`reef-relay.mjs` (§8).
+
+## Nachtrag 03.08.2026 — Owner-Entscheidung: SSH-Passwort-Login bleibt
+
+Das Pi-Audit (Live-System) hat festgestellt: SSH-Passwort-Authentifizierung
+ist aktiv (`50-cloud-init.conf` schlägt das `no` aus `60-cloudimg-settings.conf`),
+User `sven` hat NOPASSWD-sudo, beide `authorized_keys` sind leer, kein fail2ban —
+ein brute-forcbares Passwort ist die einzige Barriere zwischen LAN und root.
+
+**Owner-Entscheidung (03.08.2026): wird im Heim-LAN so belassen, als unkritisch
+eingestuft.** Voraussetzung dieser Einordnung: Der Pi ist ausschließlich aus
+dem eigenen LAN erreichbar — keine Port-Freigabe/Exposition des SSH-Ports (22)
+ins Internet und kein Gast-WLAN mit unbekannten Clients. Sollte sich das
+ändern (Router-Freigabe, unsichere Gäste/IoT-Segmente), ist die Entscheidung
+neu zu bewerten; dann: `PasswordAuthentication no` + SSH-Key für `sven`,
+alternativ fail2ban + NOPASSWD entfernen.
+

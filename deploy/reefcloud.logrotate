@@ -1,0 +1,13 @@
+# reefcloud — Rotation des Haupt-Logs (Code-Audit 03.08.: ~70 MB/Monat ohne Rotation).
+# Der node-Prozess hält den Filedeskriptor dauerhaft offen, daher copytruncate
+# (kurzes Verlustfenster weniger Zeilen ist hier vertretbar). Das Frame-Log
+# logs/frames.log rotiert der Server selbst (reef-framelog.mjs) — nicht hier.
+/opt/reefcloud/reef-cloud-v2.log {
+    weekly
+    size 10M
+    rotate 4
+    missingok
+    notifempty
+    compress
+    copytruncate
+}

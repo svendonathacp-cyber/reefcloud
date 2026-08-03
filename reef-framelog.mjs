@@ -27,6 +27,12 @@ const DEFAULT_MAX_BYTES = 20 * 1024 * 1024; // 20 MB je Datei
 const DEFAULT_MAX_FILES = 3;                // frames.log + 2 Rotationen
 const DUMP_MAX_BYTES = 256 * 1024;          // Riesenframes nicht dumpen
 
+// Dateinamen-Sanitizer für ALLE Dump-Pfade: cls/method/serial kommen aus
+// Geräte-/App-Frames und dürfen nie roh in Dateinamen landen — sonst ist per
+// Frame-Feld Path-Traversal (z. B. cls="../../tmp/x") in ein Schreiben als
+// root an beliebige Pfade möglich (Security-Audit 03.08., Finding 1).
+export const sanitizeFileComponent = (s) => String(s).replace(/[^A-Za-z0-9_.-]/g, '_');
+
 // Zeilenformat (Tab-getrennt, maschinenlesbar):
 //   <iso-ts>\t<dir>\t<role>\t<peer>\t<cls>/<method>\tserial="<s>"\textra="<e>"\t<frameLen> B\t<hex>
 export function createFrameLog({ dir, dumpDir = null, maxBytes = DEFAULT_MAX_BYTES, maxFiles = DEFAULT_MAX_FILES } = {}) {
@@ -68,8 +74,7 @@ export function createFrameLog({ dir, dumpDir = null, maxBytes = DEFAULT_MAX_BYT
     if (cls === 'user' || cls === 'geConnect') return null; // Login: Account-Daten — nie dumpen
     if (cls === 'set' && method === 'pingTime') return null;
     if (buf.length > DUMP_MAX_BYTES) return null;
-    const safe = (s) => String(s).replace(/[^A-Za-z0-9_.-]/g, '_');
-    const file = path.join(liveDir, `GERAET_${safe(cls)}_${safe(method)}_${safe(serial || 'ohne-serial')}.bin`);
+    const file = path.join(liveDir, `GERAET_${sanitizeFileComponent(cls)}_${sanitizeFileComponent(method)}_${sanitizeFileComponent(serial || 'ohne-serial')}.bin`);
     try {
       let prev = null;
       try { prev = fs.readFileSync(file); } catch { /* neu */ }

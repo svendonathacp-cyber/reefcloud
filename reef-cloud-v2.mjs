@@ -33,7 +33,7 @@ import {
   rfManualTimePayload, rfManualUpdatePayload, u32be,
 } from './reef-onboard.mjs';
 import { JebaoClient, discover as jebaoDiscover } from './reef-jebao.mjs';
-import { createFrameLog } from './reef-framelog.mjs';
+import { createFrameLog, sanitizeFileComponent } from './reef-framelog.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -676,7 +676,7 @@ function updateState(serial, cls, method, payloadBuf) {
         try {
           const dir = path.join(DUMP_DIR, 'precise');
           fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(path.join(dir, `${Date.now()}_preciseData_${serial}.bin`), payloadBuf);
+          fs.writeFileSync(path.join(dir, `${Date.now()}_preciseData_${sanitizeFileComponent(serial)}.bin`), payloadBuf);
           log(`  → preciseData-Volldump gesichert (${payloadBuf.length} B, ${serial})`);
         } catch (e) { log(`  !! preciseData-Dump fehlgeschlagen: ${e.message}`); }
       }
@@ -731,8 +731,11 @@ function updateState(serial, cls, method, payloadBuf) {
         }
         m.state = { ...m.state, pumps };
         if (JSON.stringify(m.state) !== before) { announce(serial); saveStates(); }
+        return;
       }
-      return;
+      // Kein Patch (unbekannte Methode/neue Frame-Länge): KEIN return — durchfallen
+      // in den Unknown-Binärframe-Pfad (Hex-Log + Volldump), sonst ist der Server
+      // für die nächste FW-Variante blind (Code-Audit 03.08.).
     }
     if (cls === 'lsRefresh' && method === 'alert') {
       // 1 Byte: Zustands-Push (Onboard-JS: gleiche Code-Tabelle wie data-Byte 1).
@@ -872,7 +875,7 @@ function updateState(serial, cls, method, payloadBuf) {
     try {
       const dir = path.join(DUMP_DIR, 'unknown');
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, `${Date.now()}_${cls}_${method}_${serial}.bin`), payloadBuf);
+      fs.writeFileSync(path.join(dir, `${Date.now()}_${sanitizeFileComponent(cls)}_${sanitizeFileComponent(method)}_${sanitizeFileComponent(serial)}.bin`), payloadBuf);
     } catch { /* Dump ist best effort */ }
   }
 }
@@ -1578,9 +1581,14 @@ function handleDeviceFrame(ws, buf, peer) {
   if (f.cls === 'user' && f.method === 'login') {
     // Altgeräte (FW 1.0.0/1.1.0, Port 442): binärer Login email\0pass\0\0key\0version\0
     // Antwort (Original mitgeschnitten): status/login binär + set/time binär (7 Bytes: u16BE Jahr, M, T, h, m, s)
+    // Positionen zählen: leere Segmente MÜSSEN erhalten bleiben (Doppel-NUL
+    // zwischen pass und key im Originalformat). Der frühere cur.length-Filter
+    // kollabierte das zu 4 Elementen — damit landete die Version in „key"
+    // (live beobachtet: maskiertes „1.***" im Log, meta.firmware blieb leer).
     const parts = [];
     let cur = [];
-    for (const b of f.payload) { if (b === 0) { if (cur.length) { parts.push(Buffer.from(cur).toString('latin1')); cur = []; } } else cur.push(b); }
+    for (const b of f.payload) { if (b === 0) { parts.push(Buffer.from(cur).toString('latin1')); cur = []; } else cur.push(b); }
+    if (cur.length) parts.push(Buffer.from(cur).toString('latin1'));
     const [email, , , key, version] = parts;
     if (f.serial && f.serial !== '0000000000000000') {
       devices.set(f.serial, ws); ws.deviceSerial = f.serial; ensureDeviceRegistered(f.serial);
@@ -1709,7 +1717,7 @@ function handleAppFrame(ws, buf, peer) {
       try {
         const dir = path.join(DUMP_DIR, 'live_capture');
         fs.mkdirSync(dir, { recursive: true });
-        const file = `${Date.now()}_APP_${f.cls}_${f.method}_${f.serial}.bin`;
+        const file = `${Date.now()}_APP_${sanitizeFileComponent(f.cls)}_${sanitizeFileComponent(f.method)}_${sanitizeFileComponent(f.serial)}.bin`;
         fs.writeFileSync(path.join(dir, file), buf);
         log(`  → Capture dumps/live_capture/${file}`);
       } catch (e) { log(`  !! Capture fehlgeschlagen: ${e.message}`); }
@@ -1758,7 +1766,10 @@ function createWssServer(port, role, frameHandler, useTls = true) {
   });
   wss.on('connection', (ws, req) => {
     const peer = `${role}:${port} ${req.socket.remoteAddress}:${req.socket.remotePort}${req.url}`;
-    ws.deviceIp = req.socket.remoteAddress; // für Tunnel-Snapshots
+    // ::ffff:-Präfix (IPv4-mapped auf Dual-Stack-Socket) direkt strippen — sonst
+    // landet „::ffff:192.168.x.x" in device-ips.json und der Lade-Filter für
+    // reine IPv4 verwirft beim Restart still ALLE Einträge (Code-Audit 03.08.).
+    ws.deviceIp = (req.socket.remoteAddress || '').replace(/^::ffff:/, ''); // für Tunnel-Snapshots
     log(`=== ${role}-Connect: ${peer} (Subprotokoll=${ws.protocol}) ===`);
     if (role === 'APP') {
       apps.add(ws);

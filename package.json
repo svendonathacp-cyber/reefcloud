@@ -6,7 +6,8 @@
   "main": "reef-cloud-v2.mjs",
   "scripts": {
     "start": "node reef-cloud-v2.mjs",
-    "test": "node tanklist-test.mjs && node tanklistdetails-test.mjs"
+    "test": "node reef-salinity-test.mjs && node reef-onboard-test.mjs && node reef-onboarding-test.mjs && node reef-framelog-test.mjs && node reef-autolevel-test.mjs && node reef-jebao-test.mjs && node reef-doser-test.mjs && node reef-updater-test.mjs",
+    "test:dumps": "node tanklist-test.mjs && node tanklistdetails-test.mjs"
   },
   "dependencies": {
     "selfsigned": "^2.4.1",

@@ -153,6 +153,10 @@ systemctl daemon-reload
 systemctl enable --now "${SERVICE_NAME}"
 ok "Dienst ${SERVICE_NAME} aktiviert und gestartet."
 
+# logrotate für das Haupt-Log (reef-cloud-v2.log hat keine eigene Rotation)
+install -m 0644 "${INSTALL_DIR}/deploy/reefcloud.logrotate" "/etc/logrotate.d/reefcloud"
+ok "logrotate-Regel für ${INSTALL_DIR}/reef-cloud-v2.log installiert."
+
 # Kurzer Zustandscheck (kein harter Fehler — der Dienst erzeugt z. B. beim
 # allerersten Start erst sein TLS-Zertifikat und kann einen Moment brauchen)
 sleep 2
