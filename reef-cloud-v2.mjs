@@ -1207,8 +1207,10 @@ function buildCommandFrame(serial, action, params) {
 // Nach Schreibbefehlen an die Dosierpumpe frische Einstellungen anfordern
 // (dzGet/settings [pump]), damit der State zeitnah das Geräte-Echo abbildet —
 // Muster wie der rfPrecise/pointer-Sync nach dem Programm-Upload.
+// Achtung: action kommt OHNE Family-Präfix („setContainer", nicht
+// „doser:setContainer") — die Familie wird daher über die Metadaten geprüft.
 function scheduleDoserRefresh(serial, action, ap) {
-  if (!String(action).startsWith('doser:')) return;
+  if (metaFor(serial)?.family !== 'doser') return;
   const pump = Number(ap?.pump);
   if (!Number.isInteger(pump) || pump < 1 || pump > 4) return;
   setTimeout(() => {
