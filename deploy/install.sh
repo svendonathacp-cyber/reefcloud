@@ -9,6 +9,10 @@
 #   curl -fsSL -o install.sh https://raw.githubusercontent.com/svendonathacp-cyber/reefcloud/main/deploy/install.sh
 #   less install.sh && sudo bash install.sh
 #
+# Schalter:
+#   -kimi / --kimi   installiert zusätzlich die Kimi Code CLI (npm, global;
+#                    danach einmalig `kimi` starten und /login ausführen)
+#
 set -euo pipefail
 
 REPO_URL="https://github.com/svendonathacp-cyber/reefcloud.git"
@@ -17,6 +21,15 @@ SERVICE_NAME="reef-cloud.service"
 TIMEZONE="Europe/Berlin"
 NODE_MAJOR_MIN=18   # Mindestversion laut Projekt
 NODE_MAJOR_LTS=22   # wird via NodeSource installiert, falls node fehlt/zu alt
+
+INSTALL_KIMI=0
+for arg in "$@"; do
+  case "$arg" in
+    -kimi|--kimi) INSTALL_KIMI=1 ;;
+    -h|--help) echo "Aufruf: sudo bash install.sh [-kimi|--kimi]"; exit 0 ;;
+    *) echo "Unbekannter Schalter: $arg (gültig: -kimi|--kimi)" >&2; exit 2 ;;
+  esac
+done
 
 # ---------------------------------------------------------------- Logging ---
 log()  { printf '\033[1;34m[reefcloud]\033[0m %s\n' "$*"; }
@@ -115,6 +128,13 @@ log "Hinweis: Das Web-UI (webui/dist/) ist im Repo enthalten — kein Build nöt
 npm --prefix "${INSTALL_DIR}" install --omit=dev --no-audit --no-fund --loglevel=error
 ok "Abhängigkeiten installiert."
 
+# ------------------------------------------- Kimi Code CLI (optional, -kimi) ---
+if [[ "${INSTALL_KIMI}" == "1" ]]; then
+  log "Installiere Kimi Code CLI global via npm (-kimi) …"
+  npm install -g @moonshot-ai/kimi-code --no-audit --no-fund --loglevel=error
+  ok "Kimi Code CLI installiert ($(kimi --version 2>/dev/null || echo 'kimi')). Einmalig 'kimi' starten und /login ausführen."
+fi
+
 # ---------------------------------------------------------------- Zeitzone ---
 # Wichtig: Die Geräte beziehen ihre Uhrzeit vom Server!
 current_tz="$(timedatectl show -p Timezone --value 2>/dev/null || echo '')"
@@ -168,6 +188,9 @@ echo "       api.reeffactory.com  ->  ${first_ip:-<pi-ip>}"
 echo "     Der Wizard auf Port 8080 zeigt die passenden IPs ebenfalls an."
 echo "  4) Zertifikat: Beim ersten Start erzeugt der Server ein selbst-signiertes"
 echo "     CA-Zertifikat — die .crt auf dem Handy installieren (siehe Doku)."
+if [[ "${INSTALL_KIMI}" == "1" ]]; then
+  echo "  5) Kimi Code CLI: einmalig 'kimi' starten und /login ausführen."
+fi
 echo
 echo "  Doku: docs/pi-installation.md im Repo bzw. auf GitHub."
 echo

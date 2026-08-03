@@ -41,6 +41,10 @@ curl -fsSL https://raw.githubusercontent.com/svendonathacp-cyber/reefcloud/main/
 Das Skript ist **idempotent**: Es kann jederzeit erneut ausgeführt werden,
 z. B. um auf eine neue Version zu aktualisieren (Installation = Update).
 
+**Optionaler Schalter:** `sudo bash install.sh -kimi` installiert zusätzlich
+die [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) global (npm) —
+danach einmalig `kimi` starten und `/login` ausführen.
+
 > **Wichtig beim Update:** Das Skript nicht direkt aus dem Repo-Verzeichnis
 > starten (`sudo bash /opt/reefcloud/deploy/install.sh`) — der `git pull`
 > würde die Datei sonst während der Ausführung überschreiben. Immer frisch
