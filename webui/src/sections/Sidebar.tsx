@@ -40,12 +40,16 @@ function NavRow({ id, selected, onSelect, Icon, label, dot }: {
 export default function Sidebar({ devices, selected, onSelect }: Props) {
   const t = useT();
 
-  // Familien in Reihenfolge ihres ersten Auftretens (devices ist vorsortiert)
+  // Familien in Reihenfolge ihres ersten Auftretens (devices ist vorsortiert).
+  // Jebao-Strömungspumpen gruppiert mit den RF-Wavemaker unter „Strömungspumpe" —
+  // gleicher Gerätetyp, anderer Hersteller.
+  const groupFamily = (f: string) => (f === 'jebao' ? 'wave' : f);
   const groups: { family: string; items: DeviceSnapshot[] }[] = [];
   for (const d of devices) {
-    const g = groups.find((x) => x.family === d.family);
+    const gf = groupFamily(d.family);
+    const g = groups.find((x) => x.family === gf);
     if (g) g.items.push(d);
-    else groups.push({ family: d.family, items: [d] });
+    else groups.push({ family: gf, items: [d] });
   }
 
   return (
