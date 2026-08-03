@@ -147,26 +147,32 @@ function synthStatus({ bits = 0x0469, flow = 30, freq = 5, feedTime = 10,
 // 5) Write-Payload-Packing (0x93): attr_flags + swapped-bit-Gruppe
 // =====================================================================
 {
-  // Flow (id 8) + Mode (id 5): flags [0x01, 0x20], Werte [00 40, 1e]
+  // Write-Layout (Referenz set_multiple_attributes): seq(4) + 0x01 +
+  // flags(8 B, über ALLE writable attrs id 0–63) + values(400 B, voller
+  // Datenpunkt inkl. Timer-Tabelle). Gekürzte Writes ACKt die Pumpe (0x94),
+  // verwirft sie aber still — live an der Pumpe verifiziert.
+  // Flow (id 8) + Mode (id 5): flags[6]=0x01 (id 8) + flags[7]=0x20 (id 5)
   const { payload } = buildWritePayload({ Flow: 30, Mode: 2 }, 0x1234);
   check('Write: seq u32BE', [...payload.subarray(0, 4)], [0, 0, 0x12, 0x34]);
   check('Write: Action-Byte 0x01', payload[4], 0x01);
-  check('Write: attr_flags Flow+Mode (Bytereihenfolge umgedreht)',
-    [...payload.subarray(5, 7)], [0x01, 0x20]);
-  check('Write: Mode=2 als swapped bits (u16BE 0x0040) + Flow',
-    [...payload.subarray(7)], [0x00, 0x40, 0x1e]);
-  // Nur SwitchON (id 0): 1 Flag-Byte, Bit 0 im u16
+  check('Write: Gesamtlänge 4+1+8+400', payload.length, 413);
+  check('Write: attr_flags Flow+Mode (8 B, Positionen von hinten gezählt)',
+    [...payload.subarray(5, 13)], [0, 0, 0, 0, 0, 0, 0x01, 0x20]);
+  check('Write: Mode=2 als swapped bits (u16BE 0x0040) + Flow am Byte 2',
+    [payload.readUInt16BE(13), payload[15], payload.subarray(16).every((b) => b === 0)],
+    [0x0040, 30, true]);
+  // Nur SwitchON (id 0): flags[7]=0x01, Bit 0 im u16 der values
   const p2 = buildWritePayload({ SwitchON: true }, 1);
-  check('Write: SwitchON allein → flags [0x01], u16 0x0001',
-    [[...p2.payload.subarray(5, 6)], p2.payload.readUInt16BE(6)], [[0x01], 0x0001]);
-  // FeedSwitch + FeedTime: id 2 + id 10
+  check('Write: SwitchON allein → flags[7]=0x01, u16 0x0001',
+    [p2.payload[12], p2.payload.readUInt16BE(13)], [0x01, 0x0001]);
+  // FeedSwitch + FeedTime: id 2 + id 10 → flags[7]=0x04 + flags[6]=0x04
   const p3 = buildWritePayload({ FeedSwitch: 1, FeedTime: 15 }, 1);
-  check('Write: FeedSwitch+FeedTime flags', [...p3.payload.subarray(5, 7)], [0x04, 0x04]);
-  check('Write: FeedSwitch-Bit + FeedTime-Byte (attr_values bis Byte 4)',
-    [p3.payload.readUInt16BE(7), p3.payload[11]], [0x0004, 15]);
+  check('Write: FeedSwitch+FeedTime flags', [...p3.payload.subarray(11, 13)], [0x04, 0x04]);
+  check('Write: FeedSwitch-Bit + FeedTime-Byte',
+    [p3.payload.readUInt16BE(13), p3.payload[17]], [0x0004, 15]);
   // AutoMode (id 7, bits 9–11, Länge 3)
   const p4 = buildWritePayload({ AutoMode: 5 }, 1);
-  check('Write: AutoMode=5 → u16 5<<9 = 0x0A00', p4.payload.readUInt16BE(6), 5 << 9);
+  check('Write: AutoMode=5 → u16 5<<9 = 0x0A00', p4.payload.readUInt16BE(13), 5 << 9);
   // Fehlerfälle
   let threw = 0;
   try { buildWritePayload({ Unbekannt: 1 }); } catch { threw++; }
@@ -265,8 +271,8 @@ function patchFlag(frame, flag) {
   check('Client: zwei Writes gleiche Sekunde → verschiedene seqs',
     [w2.seq !== w.seq, fake.seen.writes.length], [true, 2]);
   check('Client: Write landete auf dem „Gerät"',
-    [[...fake.seen.writes[0].subarray(5, 7)], fake.seen.writes[0][9]],
-    [[0x01, 0x20], 55]);
+    [[...fake.seen.writes[0].subarray(11, 13)], fake.seen.writes[0][15], fake.seen.writes[0].length],
+    [[0x01, 0x20], 55, 413]);
 
   // Keepalive: 80 ms Intervall → nach 350 ms mindestens 2 Pings
   await new Promise((r) => setTimeout(r, 350));

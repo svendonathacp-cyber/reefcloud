@@ -268,15 +268,17 @@ export function buildWritePayload(updates, seq = nextSeq()) {
   const names = Object.keys(updates);
   if (!names.length) throw new Error('keine Attribute übergeben');
   for (const n of names) if (!WAVE_ATTRS[n]) throw new Error(`unbekanntes Attribut "${n}"`);
-  const maxId = Math.max(...names.map((n) => WAVE_ATTRS[n].id));
-  const flagsLen = (maxId >> 3) + 1;
+  // Referenz (gizwits_lan/device.py set_multiple_attributes): flags- und
+  // values-Länge werden über ALLE schreibbaren Attribute des Modells bestimmt.
+  // Modell 54114ccd…: 71 attrs, writable bis id 63 (HMSData) → 8 Flag-Bytes;
+  // längstes writable attr endet bei Byte 400 → 400 Value-Bytes. Gekürzte
+  // Writes ACKt die Pumpe zwar mit 0x94, verwirft sie aber still — und die
+  // Flag-Bitpositionen hängen von der Array-Länge ab (von hinten gezählt).
+  const WRITE_FLAG_BYTES = 8;   // (63 >> 3) + 1
+  const WRITE_VALUE_BYTES = 400; // Bitgruppe + Bytes 2–391 (Timer) + YMD/HMS
+  const flagsLen = WRITE_FLAG_BYTES;
   const flags = Buffer.alloc(flagsLen);
-  let maxOffset = 0;
-  for (const n of names) {
-    const a = WAVE_ATTRS[n];
-    maxOffset = Math.max(maxOffset, a.kind === 'byte' ? a.byte + 1 : 2);
-  }
-  const values = Buffer.alloc(maxOffset);
+  const values = Buffer.alloc(WRITE_VALUE_BYTES);
   for (const n of names) {
     const a = WAVE_ATTRS[n];
     flags[flagsLen - 1 - (a.id >> 3)] |= 1 << (a.id & 7);
