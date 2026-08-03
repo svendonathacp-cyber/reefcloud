@@ -2208,8 +2208,11 @@ const webServer = http.createServer(async (req, res) => {
       } catch { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('Anleitung nicht gefunden'); }
     }
     // Statische Auslieferung der gebauten UI (SPA-Fallback: index.html).
-    // Erststart ohne Token: Setup-Wizard statt Dashboard zeigen.
-    const rel = u.pathname === '/' ? (!TUNNEL_TOKEN ? '__setup__' : 'index.html') : decodeURIComponent(u.pathname).replace(/^\/+/, '');
+    // Erststart ohne Token: Setup-Wizard statt Dashboard zeigen. Ausnahme
+    // ?skip=1 (Link „direkt zum Dashboard" im Wizard): bewusst überspringen —
+    // der Pfad bleibt /, damit die React-Route matched (kein /index.html!).
+    const skipSetup = u.searchParams.has('skip');
+    const rel = u.pathname === '/' ? (!TUNNEL_TOKEN && !skipSetup ? '__setup__' : 'index.html') : decodeURIComponent(u.pathname).replace(/^\/+/, '');
     if (rel === '__setup__') {
       try {
         const data = fs.readFileSync(path.join(__dirname, 'setup.html'));
