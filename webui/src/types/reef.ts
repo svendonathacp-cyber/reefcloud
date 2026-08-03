@@ -113,3 +113,55 @@ export interface FlareProgram {
   intensity: number; // Gesamtintensität 0..100 %
   points: FlareProgramPoint[];
 }
+
+// ---------- Dosing (RFDZ) — gespiegelt zum Parser in reef-doser.mjs ----------
+
+export interface DoserScheduleSlot {
+  ml: number;      // Dosis-Menge (0 = freier Slot — Heuristik, Statusbyte unbekannt)
+  minutes: number; // Uhrzeit in Minuten seit Mitternacht (0..1439)
+}
+
+export interface DoserHistoryEntry {
+  doseMl: number;
+  manualMl: number;
+  ts: number;   // Epoch-ms (aus Geräte-Datum/Zeit, Server-Lokalzeit)
+  type: number; // 1=Auto, 2=manuell, 3=beides, 4=Skip %, 5/6=verzögert, 7-10=Korrektur, 11=übersprungen
+}
+
+export interface DoserPump {
+  index: number; // 1..4
+  name: string;
+  fillMl: number;
+  capacityMl: number;
+  mode: number; // 0=idle, 1=Auto-Dose, 2=man. Refill, 3=Kreislauf, 4=Kalibrierung
+  todayMl: number;
+  targetMl: number;
+  calDate?: { day: number; month: number; year: number }; // nur im settings-Frame
+  calOverdue?: boolean;
+  schedule?: DoserScheduleSlot[]; // nur im settings-Frame (24 Slots)
+  history?: DoserHistoryEntry[];
+  weekdayMask?: number; // bit0=So … bit6=Sa
+  autoActive?: boolean; // bit7 der Maske; false ⇒ nächste Dosis übersprungen
+  skipValue?: number;
+  calCountdownS?: number;
+  circuitCountdownS?: number;
+  refillDoneMl?: number;
+  refillTargetMl?: number;
+  nextDoseMl?: number; // status[18-21]: Refill-Ist (p=2), im Idle nächste Dosis
+  autoDoseNr?: number;
+  autoDoseTotal?: number;
+  autoDoseDoneMl?: number;
+  autoDoseTargetMl?: number;
+  manualDoneMl?: number;
+  manualTargetMl?: number;
+  manualStatus?: number;
+  dayCounter?: number;
+  lastDoseMl?: number; // aus dzRefresh/dose (5-B-Push)
+  lastDoseTs?: number;
+}
+
+export function doserPumps(dev: DeviceSnapshot): DoserPump[] {
+  const p = dev.state.pumps;
+  if (!Array.isArray(p)) return [];
+  return p.filter((x): x is DoserPump => !!x && typeof x === 'object' && Number.isInteger((x as DoserPump).index));
+}
