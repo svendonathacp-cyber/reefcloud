@@ -30,6 +30,12 @@ device-ips.json
 device-props.json
 device-states.json
 
+# Server-Einstellungen + Zeitreihen-History (Laufzeitdaten)
+settings.json
+reef-history.db
+reef-history.db-wal
+reef-history.db-shm
+
 # Jebao-Pumpen (Laufzeitdaten, enthält LAN-IPs — Vorlage: jebao.example.json)
 jebao.json
 

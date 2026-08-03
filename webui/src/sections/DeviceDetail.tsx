@@ -18,6 +18,7 @@ import AutolevelSection from './AutolevelSection';
 import DoserBody from './DoserBody';
 import FlareProgramEditor from './FlareProgramEditor';
 import FlareManualSection, { FlareModeSwitch } from './FlareManualSection';
+import HistoryChart from './HistoryChart';
 import LevelKeeperBody from './LevelKeeperBody';
 import { useT } from '@/i18n/I18nContext';
 import type { CommandFn, DeviceSnapshot, SetDevicePropsFn, SetNicknameFn } from '@/types/reef';
@@ -508,6 +509,9 @@ export default function DeviceDetail({ dev, devices, now, sendCommand, setNickna
           )}
         </CardContent>
       </Card>
+
+      {/* Zeitreihen-Verlauf (SQLite-History des Servers; rendert nichts ohne Daten) */}
+      <HistoryChart dev={dev} />
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
         {dev.firmware ? t('detail.firmware', { v: dev.firmware }) : t('detail.firmwareUnknown')} · {dev.ip || t('detail.ipUnknown')} ·

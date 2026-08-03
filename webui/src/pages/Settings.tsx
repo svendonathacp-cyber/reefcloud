@@ -32,6 +32,8 @@ interface SettingsData {
   tunnelLabel: string;
   hasToken: boolean;
   tunnelConnected: boolean;
+  historyEnabled?: boolean;
+  historyRetentionDays?: number;
 }
 
 interface SetupStatus {
@@ -96,11 +98,16 @@ export default function Settings({ devices = [], onOpenDevice }: SettingsProps =
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
+  // History-Aufbewahrung (settings.json auf dem Server)
+  const [retention, setRetention] = useState('');
+  const [savingRetention, setSavingRetention] = useState(false);
+
   const applySettings = useCallback((s: SettingsData) => {
     setSettings(s);
     setType(TUNNEL_TYPES.includes(s.tunnelType) ? s.tunnelType : 'webos');
     setLabel(s.tunnelLabel ?? '');
     setUrl(s.tunnelUrl ?? '');
+    if (Number.isFinite(s.historyRetentionDays)) setRetention(String(s.historyRetentionDays));
   }, []);
 
   const load = useCallback(async () => {
@@ -216,6 +223,28 @@ export default function Settings({ devices = [], onOpenDevice }: SettingsProps =
     { href: '/guides/dns.html', Icon: Network, titleKey: 'settings.guide.dns.title', descKey: 'settings.guide.dns.desc' },
     { href: '/setup', Icon: Wand2, titleKey: 'settings.guide.setup.title', descKey: 'settings.guide.setup.desc' },
   ] as const), []);
+
+  const onSaveRetention = async () => {
+    const d = Number(retention);
+    if (!Number.isFinite(d) || d < 1 || d > 3650) {
+      toast.error(t('settings.history.retentionInvalid'));
+      return;
+    }
+    setSavingRetention(true);
+    try {
+      const j = await fetchJson('/api/settings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ historyRetentionDays: Math.round(d) }),
+      });
+      if (j.ok !== true) throw new Error(typeof j.error === 'string' ? j.error : 'unknown');
+      toast.success(t('settings.history.saved'));
+    } catch (e) {
+      toast.error(t('settings.saveFailed', { error: errMsg(e) }));
+    } finally {
+      setSavingRetention(false);
+    }
+  };
 
   const busy = saving || testing;
 
@@ -391,6 +420,43 @@ export default function Settings({ devices = [], onOpenDevice }: SettingsProps =
                     {testResult.ok ? t('settings.testOk') : t('settings.testFailed', { error: testResult.error ?? '?' })}
                   </span>
                 )}
+              </div>
+            </div>
+          </section>
+
+          {/* ===== Verlauf / History ===== */}
+          <section>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              {t('settings.history')}
+            </h2>
+            <div className="rounded-xl border border-border/70 bg-card/80 p-5">
+              <p className="text-xs leading-relaxed text-muted-foreground">{t('settings.history.desc')}</p>
+              {settings?.historyEnabled === false && (
+                <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  {t('settings.history.disabledNote')}
+                </p>
+              )}
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="history-retention">{t('settings.history.retention')}</Label>
+                  <Input
+                    id="history-retention"
+                    inputMode="numeric"
+                    value={retention}
+                    onChange={(e) => setRetention(e.target.value)}
+                    className="w-32"
+                    disabled={savingRetention || settings?.historyEnabled === false}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('settings.history.retentionHint')}</p>
+                </div>
+                <Button
+                  onClick={() => void onSaveRetention()}
+                  disabled={savingRetention || !retention || settings?.historyEnabled === false}
+                  className="gap-1.5"
+                >
+                  {savingRetention ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {savingRetention ? t('settings.saving') : t('settings.save')}
+                </Button>
               </div>
             </div>
           </section>

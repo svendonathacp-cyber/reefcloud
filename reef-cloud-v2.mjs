@@ -34,6 +34,7 @@ import {
 } from './reef-onboard.mjs';
 import { JebaoClient, discover as jebaoDiscover } from './reef-jebao.mjs';
 import { createFrameLog, sanitizeFileComponent } from './reef-framelog.mjs';
+import { openHistory } from './reef-history.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.join(__dirname, 'dumps');
@@ -453,6 +454,100 @@ function saveStates() {
   statesSaveTimer.unref();
 }
 
+// ---------- Zeitreihen-History (SQLite, reef-history.mjs) ----------
+// Einstellungen: settings.json { historyRetentionDays } — Laufzeitdaten,
+// steht in .gitignore. Atomares Schreiben (Muster names.json).
+const SETTINGS_FILE = path.join(__dirname, 'settings.json');
+const settings = { historyRetentionDays: 30 };
+try {
+  const s = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+  const d = Number(s?.historyRetentionDays);
+  if (Number.isFinite(d) && d >= 1 && d <= 3650) settings.historyRetentionDays = Math.round(d);
+} catch { /* Datei optional oder defekt → Default 30 Tage */ }
+
+function saveSettings() {
+  const tmp = SETTINGS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+  fs.renameSync(tmp, SETTINGS_FILE);
+}
+
+// State → Metriken. Werte müssen endliche Zahlen liefern (oder null =
+// nicht aufzeichnen). discrete: sofort bei Wertänderung speichern (Flanke),
+// sonst höchstens 1 Punkt/Minute (Schreibdrossel in reef-history.mjs).
+const histNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const histBool = (v) => (v === true ? 1 : v === false ? 0 : null);
+const HISTORY_EXTRACTORS = {
+  basepump: { speed: [histNum, (s) => s.speed], mode: [histNum, (s) => s.mode, true] },
+  wave: { speed: [histNum, (s) => s.speed], mode: [histNum, (s) => s.mode, true] },
+  jebao: { flow: [histNum, (s) => s.flow], mode: [histNum, (s) => s.mode, true] },
+  thermo: { temperatureC: [histNum, (s) => s.temperatureC] },
+  salinity: {
+    salinityPpt: [histNum, (s) => s.salinityPpt],
+    temperatureC: [histNum, (s) => s.temperatureC],
+    conductivityMs: [histNum, (s) => s.conductivityMs],
+  },
+  flare: { ledTempC: [histNum, (s) => s.ledTempC] },
+  level: {
+    todayMl: [histNum, (s) => s.todayMlSettings ?? s.todayMl],
+    statusCode: [histNum, (s) => s.statusCode, true],
+  },
+  levelSensor: {
+    covered: [histBool, (s) => (typeof s.covered === 'boolean' ? s.covered : s.covered === 'unknown' ? null : s.covered), true],
+    alarm: [histBool, (s) => s.alarm, true],
+  },
+  roller: { rollCurrentLength: [histNum, (s) => s.roll?.currentLength] },
+};
+
+const HISTORY_DB = path.join(__dirname, 'reef-history.db');
+let history = null;
+try {
+  history = openHistory(HISTORY_DB);
+  log(`History aktiv: ${HISTORY_DB} (SQLite, Aufbewahrung ${settings.historyRetentionDays} Tage)`);
+} catch (e) {
+  log(`!! History deaktiviert: ${e.message}`);
+}
+
+let historyErrorLogged = false;
+function recordHistory(serial) {
+  if (!history) return;
+  try {
+    const m = deviceMeta.get(serial);
+    const st = m?.state;
+    if (!st || typeof st !== 'object') return;
+    if (m.family === 'doser') {
+      // Pro Pumpe zwei kontinuierliche Metriken (Tagesmenge + Füllstand)
+      for (const p of Array.isArray(st.pumps) ? st.pumps : []) {
+        if (!p || !Number.isInteger(p.index)) continue;
+        for (const [metric, v] of [[`pump${p.index}.todayMl`, histNum(p.todayMl)], [`pump${p.index}.fillMl`, histNum(p.fillMl)]]) {
+          if (v !== null) history.record(serial, metric, v);
+        }
+      }
+      return;
+    }
+    const spec = HISTORY_EXTRACTORS[m.family];
+    if (!spec) return;
+    for (const [metric, [conv, pick, discrete]] of Object.entries(spec)) {
+      const v = conv(pick(st));
+      if (v !== null) history.record(serial, metric, v, { discrete: discrete === true });
+    }
+  } catch (e) {
+    if (!historyErrorLogged) { historyErrorLogged = true; log(`!! History-Aufzeichnung fehlgeschlagen: ${e.message}`); }
+  }
+}
+
+// Retention: beim Start und stündlich alles Ältere als historyRetentionDays löschen
+function pruneHistory() {
+  if (!history) return;
+  try {
+    const cutoff = Date.now() - settings.historyRetentionDays * 86_400_000;
+    const n = history.prune(cutoff);
+    if (n > 0) log(`History: ${n} Punkte älter als ${settings.historyRetentionDays} Tage gelöscht`);
+  } catch (e) { log(`!! History-Prune fehlgeschlagen: ${e.message}`); }
+}
+pruneHistory();
+setInterval(pruneHistory, 3_600_000).unref();
+
+
 // ---------- Erreichbarkeits-Ping („Hello-Ping") für offline Geräte ----------
 // Die Geräte sind WS-Clients — der Server kann keine WS-Verbindung ZUM Gerät
 // öffnen. Stattdessen TCP-Connect-Versuche (node:net, kein ICMP, keine neuen
@@ -529,6 +624,7 @@ let tunnel = null;
 // Event-Announce, pro Serial gedrosselt (Altgeräte pushen alle 5 s!)
 const announceTimers = new Map();
 function announce(serial, immediate = false) {
+  recordHistory(serial); // Zeitreihen mitschreiben (gedrosselt intern, tunnel-unabhängig)
   if (!tunnel) return;
   if (immediate) { tunnel.sendEvent(snapshot(serial)); return; }
   if (announceTimers.has(serial)) return;
@@ -2230,6 +2326,29 @@ const webServer = http.createServer(async (req, res) => {
       scheduleSelfExit('Neustart aus den Einstellungen');
       return;
     }
+    // ---------- Zeitreihen-History ----------
+    // GET /api/history/metrics → welche Metriken je Gerät aufgezeichnet werden
+    if (u.pathname === '/api/history/metrics' && req.method === 'GET') {
+      return webSendJson(res, { enabled: !!history, metrics: history ? history.metrics() : [] });
+    }
+    // GET /api/history?serial=&metric=&from=&to=&bucketSec= → Punkte (bucketSec>0: AVG-Buckets)
+    if (u.pathname === '/api/history' && req.method === 'GET') {
+      if (!history) return webSendJson(res, { enabled: false, points: [] });
+      const serial = String(u.searchParams.get('serial') || '');
+      const metric = String(u.searchParams.get('metric') || '');
+      if (!serial || !metric) throw new Error('serial und metric erwartet');
+      const now = Date.now();
+      const to = Math.min(now, Number(u.searchParams.get('to')) || now);
+      const from = Math.max(0, Number(u.searchParams.get('from')) || (to - 86_400_000));
+      if (to <= from) throw new Error('from muss vor to liegen');
+      // Bucket so wählen, dass höchstens ~480 Punkte zurückkommen (UI-Chart)
+      const spanS = (to - from) / 1000;
+      let bucketSec = Number(u.searchParams.get('bucketSec')) || 0;
+      if (bucketSec > 0) bucketSec = Math.max(1, Math.min(86_400, Math.round(bucketSec)));
+      else if (spanS / 60 > 480) bucketSec = Math.ceil(spanS / 480);
+      const points = history.query(serial, metric, from, to, bucketSec);
+      return webSendJson(res, { enabled: true, serial, metric, from, to, bucketSec, points });
+    }
     if (u.pathname === '/api/settings' && req.method === 'GET') {
       return webSendJson(res, {
         tunnelUrl: TUNNEL_URL,
@@ -2237,30 +2356,47 @@ const webServer = http.createServer(async (req, res) => {
         tunnelLabel: TUNNEL_LABEL,
         hasToken: !!TUNNEL_TOKEN,
         tunnelConnected: !!(tunnel && tunnel.isConnected()),
+        historyEnabled: !!history,
+        historyRetentionDays: settings.historyRetentionDays,
       });
     }
     if (u.pathname === '/api/settings' && req.method === 'POST') {
       // Nur gesetzte Felder ändern; fehlende Felder bleiben wie bisher.
       const body = JSON.parse(await webReadBody(req) || '{}');
-      const tunnelUrl = body.tunnelUrl !== undefined ? String(body.tunnelUrl).trim() : TUNNEL_URL;
-      let tunnelToken = String(body.tunnelToken || '').trim();
-      if (!tunnelToken) tunnelToken = TUNNEL_TOKEN; // leer = bestehenden behalten
-      const tunnelType = body.tunnelType !== undefined ? String(body.tunnelType).trim() : TUNNEL_TYPE;
-      const tunnelLabel = body.tunnelLabel !== undefined ? String(body.tunnelLabel).trim() : TUNNEL_LABEL;
-      if (!/^wss?:\/\//.test(tunnelUrl)) throw new Error('tunnelUrl muss mit ws:// oder wss:// beginnen');
-      if (tunnelToken && !/^[0-9a-f]{32,128}$/i.test(tunnelToken)) throw new Error('tunnelToken ungültig (32–128 Hex-Zeichen erwartet)');
-      if (!TUNNEL_TYPES.includes(tunnelType)) throw new Error(`tunnelType ungültig (erlaubt: ${TUNNEL_TYPES.join(', ')})`);
-      assertNoCtrl('tunnelUrl', tunnelUrl);
-      assertNoCtrl('tunnelLabel', tunnelLabel);
-      assertNoCtrl('tunnelToken', tunnelToken);
-      const envFile = writeEnvConfig({ tunnelUrl, tunnelToken: tunnelToken ?? undefined, tunnelType, tunnelLabel });
-      TUNNEL_URL = tunnelUrl;
-      TUNNEL_TOKEN = tunnelToken;
-      TUNNEL_TYPE = tunnelType;
-      TUNNEL_LABEL = tunnelLabel;
-      launchTunnel('Einstellungen');
-      log(`  [settings] Konfiguration gespeichert → ${envFile}; Typ=${tunnelType} (${tunnelLabel}), Tunnel neu gestartet → ${tunnelUrl}`);
-      return webSendJson(res, { ok: true, envFile });
+      const out = { ok: true };
+      // --- History-Retention (settings.json) — unabhängig von den Tunnel-Feldern
+      if (body.historyRetentionDays !== undefined) {
+        const d = Number(body.historyRetentionDays);
+        if (!Number.isFinite(d) || d < 1 || d > 3650) throw new Error('historyRetentionDays 1–3650 erwartet');
+        settings.historyRetentionDays = Math.round(d);
+        saveSettings();
+        out.historyRetentionDays = settings.historyRetentionDays;
+        log(`  [settings] History-Aufbewahrung: ${settings.historyRetentionDays} Tage`);
+      }
+      // --- Tunnel-Felder nur anfassen, wenn mindestens eines mitgeschickt wurde
+      const hasTunnelFields = ['tunnelUrl', 'tunnelToken', 'tunnelType', 'tunnelLabel'].some((k) => body[k] !== undefined);
+      if (hasTunnelFields) {
+        const tunnelUrl = body.tunnelUrl !== undefined ? String(body.tunnelUrl).trim() : TUNNEL_URL;
+        let tunnelToken = String(body.tunnelToken || '').trim();
+        if (!tunnelToken) tunnelToken = TUNNEL_TOKEN; // leer = bestehenden behalten
+        const tunnelType = body.tunnelType !== undefined ? String(body.tunnelType).trim() : TUNNEL_TYPE;
+        const tunnelLabel = body.tunnelLabel !== undefined ? String(body.tunnelLabel).trim() : TUNNEL_LABEL;
+        if (tunnelUrl && !/^wss?:\/\//.test(tunnelUrl)) throw new Error('tunnelUrl muss mit ws:// oder wss:// beginnen');
+        if (tunnelToken && !/^[0-9a-f]{32,128}$/i.test(tunnelToken)) throw new Error('tunnelToken ungültig (32–128 Hex-Zeichen erwartet)');
+        if (!TUNNEL_TYPES.includes(tunnelType)) throw new Error(`tunnelType ungültig (erlaubt: ${TUNNEL_TYPES.join(', ')})`);
+        assertNoCtrl('tunnelUrl', tunnelUrl);
+        assertNoCtrl('tunnelLabel', tunnelLabel);
+        assertNoCtrl('tunnelToken', tunnelToken);
+        const envFile = writeEnvConfig({ tunnelUrl, tunnelToken: tunnelToken ?? undefined, tunnelType, tunnelLabel });
+        TUNNEL_URL = tunnelUrl;
+        TUNNEL_TOKEN = tunnelToken;
+        TUNNEL_TYPE = tunnelType;
+        TUNNEL_LABEL = tunnelLabel;
+        launchTunnel('Einstellungen');
+        out.envFile = envFile;
+        log(`  [settings] Konfiguration gespeichert → ${envFile}; Typ=${tunnelType} (${tunnelLabel}), Tunnel neu gestartet → ${tunnelUrl || '(aus)'}`);
+      }
+      return webSendJson(res, out);
     }
     if (u.pathname === '/setup') {
       const fp = path.join(__dirname, 'setup.html');
