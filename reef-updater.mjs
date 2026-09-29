@@ -159,10 +159,12 @@ export function createUpdater({
   // und beendet den Prozess dann selbst (systemd zieht ihn wieder hoch).
   async function install() {
     if (updating) throw new Error('Update läuft bereits');
-    if (!(await detectSupport())) throw new Error(`Update nicht möglich: ${unsupportedReason}`);
-    if (!(behind > 0)) throw new Error('Kein Update verfügbar (behind = 0)');
+    // Vor dem ersten await sperren: auch ein bereits aufgelöstes Promise
+    // lässt sonst einen zweiten Aufruf durch die Prüfung oben gelangen.
     updating = true;
     try {
+      if (!(await detectSupport())) throw new Error(`Update nicht möglich: ${unsupportedReason}`);
+      if (!(behind > 0)) throw new Error('Kein Update verfügbar (behind = 0)');
       log(`  [updater] installiere Update (${behind} Commit(s) von origin/main)…`);
       // Explizit origin/main: exakt das ziehen, was der Check misst —
       // unabhängig vom konfigurierten Upstream des lokalen Branches.

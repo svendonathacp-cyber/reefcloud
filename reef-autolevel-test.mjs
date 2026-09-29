@@ -245,5 +245,52 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('status: Datenalter in Sekunden vorhanden', typeof st.highDataAgeS === 'number' && st.highDataAgeS >= 0, true);
 }
 
+// Frische Zeitstempel dürfen einen bereits getrennten Sensor nicht kaschieren.
+for (const serial of [HIGH, LOW]) {
+  const w = freshWorld();
+  w.metaFor(LOW).state.covered = false;
+  w.setOnline(serial, false);
+  const al = makeAutolevel(w);
+  await al.check();
+  check(`offline/frisch ${serial}: kein Pumpenbefehl`, w.enc.filter((e) => e.cls === 'bpSet').length, 0);
+  check(`offline/frisch ${serial}: staleData`, al.payload().history[0]?.reason, 'staleData');
+}
+
+{
+  const w = freshWorld();
+  w.metaFor(HIGH).state.covered = 'unknown';
+  w.metaFor(LOW).state.covered = false;
+  const al = makeAutolevel(w);
+  await al.check();
+  check('oberer Sensor unknown: trotz trockenem unteren Sensor kein Befehl', w.enc.filter((e) => e.cls === 'bpSet').length, 0);
+  w.metaFor(HIGH).state.covered = false;
+  await al.check();
+  check('oberer Sensor wieder eindeutig: Erhöhung erlaubt', w.metaFor(PUMP).state.speed, 51);
+}
+
+// Eine eindeutige Vollmeldung behält Vorrang, auch wenn unten unknown meldet.
+{
+  const w = freshWorld();
+  w.metaFor(HIGH).state.covered = true;
+  w.metaFor(LOW).state.covered = 'unknown';
+  const al = makeAutolevel(w);
+  await al.check();
+  check('Vollschutz bei unterem unknown: Absenkung erlaubt', w.metaFor(PUMP).state.speed, 49);
+}
+
+// Während des asynchronen Refreshs kann ein zuvor frischer Sensor ausfallen.
+{
+  const w = freshWorld();
+  w.metaFor(LOW).lastLsDataTs = Date.now() - 60_000;
+  w.metaFor(LOW).state.covered = false;
+  w.devices.get(LOW).send = () => {
+    w.metaFor(LOW).lastLsDataTs = Date.now();
+    w.setOnline(HIGH, false);
+  };
+  const al = makeAutolevel(w);
+  await al.check();
+  check('Disconnect während Refresh: kein Pumpenbefehl', w.enc.filter((e) => e.cls === 'bpSet').length, 0);
+}
+
 console.log(failures ? `\n${failures} Test(s) FEHLGESCHLAGEN` : '\nAlle Autolevel-Tests bestanden');
 process.exit(failures ? 1 : 0);

@@ -194,5 +194,28 @@ function makeUpdater(responses, opts = {}) {
   void first.catch(() => {}); // hängender Mock — nie auflösen, nur Fehler schlucken
 }
 
+// Gleichzeitige Aufrufe ohne Timer-Pause müssen schon vor detectSupport sperren.
+{
+  const { updater, calls } = makeUpdater();
+  await updater.check();
+  const results = await Promise.allSettled([updater.install(), updater.install()]);
+  check('gleichzeitig: genau ein erfolgreicher Install', results.map((r) => r.status), ['fulfilled', 'rejected']);
+  check('gleichzeitig: zweiter Install meldet Sperre', /läuft bereits/.test(results[1].reason?.message ?? ''), true);
+  check('gleichzeitig: genau ein Pull', calls.filter((c) => c === 'git pull --ff-only origin main').length, 1);
+  check('gleichzeitig: genau ein npm install', calls.filter((c) => c === 'npm install --omit=dev --no-audit --no-fund').length, 1);
+}
+
+// Frühe Validierungsfehler dürfen die vorgezogene Sperre nicht stehen lassen.
+for (const opts of [{ dir: makeDir(false) }, {}]) {
+  const { updater } = makeUpdater({ 'git rev-list --count HEAD..origin/main': { stdout: '0' } }, opts);
+  await updater.check();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let msg = '';
+    try { await updater.install(); } catch (e) { msg = e.message; }
+    check(`Validierungsfehler Versuch ${attempt}: ursprünglicher Fehler`, /Update nicht möglich|Kein Update verfügbar/.test(msg), true);
+    check(`Validierungsfehler Versuch ${attempt}: Sperre freigegeben`, updater.status().updating, false);
+  }
+}
+
 console.log(failures ? `\n${failures} Test(s) FEHLGESCHLAGEN` : '\nAlle Updater-Tests bestanden');
 process.exit(failures ? 1 : 0);

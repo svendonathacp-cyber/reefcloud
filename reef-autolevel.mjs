@@ -270,17 +270,23 @@ export function createAutolevel({ dir, log, metaFor, devices, buildCommandFrame,
       // Frische-Daten-Gate vor JEDER automatischen Anpassung: Daten älter als
       // maxDataAgeMs (oder Sensor offline) → erst aktiv refreshen, dann
       // entscheiden; bleibt es stale → überspringen statt auf Alt-Daten regeln.
-      const stale = sensors.filter((s) => dataAgeMs(s) > config.maxDataAgeMs);
+      const stale = sensors.filter((s) => !deviceOnline(s) || dataAgeMs(s) > config.maxDataAgeMs);
       if (stale.length) {
         const refreshable = stale.filter((s) => deviceOnline(s));
         if (refreshable.length) await refreshSensors(refreshable);
-        const stillStale = sensors.filter((s) => dataAgeMs(s) > config.maxDataAgeMs);
-        if (stillStale.length) { skipStale(stillStale); return; }
       }
+      // Nach dem await erneut die aktuelle Konfiguration und Verbindungen
+      // prüfen: während des Refreshs können Sensoren wechseln oder ausfallen.
+      const currentSensors = [config.highSerial, config.lowSerial].filter(Boolean);
+      const stillStale = currentSensors.filter((s) => !deviceOnline(s) || dataAgeMs(s) > config.maxDataAgeMs);
+      if (stillStale.length) { skipStale(stillStale); return; }
       if (config.highSerial && coveredOf(config.highSerial) === true) {
         adjust('tooFull'); // Schacht zu voll — Wasser über Sensor oben
         return;
       }
+      // Erhöhen nur bei eindeutigen Daten aller konfigurierten Sensoren.
+      // Eine eindeutige Vollmeldung oben darf weiterhin zuerst absenken.
+      if (currentSensors.some((s) => coveredOf(s) === 'unknown')) return;
       if (config.lowSerial && coveredOf(config.lowSerial) === false) {
         adjust('tooEmpty'); // Schacht zu leer — Wasser unter Sensor unten
       }
