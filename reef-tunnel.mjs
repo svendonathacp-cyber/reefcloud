@@ -7,45 +7,63 @@
 // vollständiger Re-Announce aller Snapshots (Server-Cache ist sonst leer).
 import WebSocket from 'ws';
 
-export function startTunnel({ url, token, log, getSnapshots, handleRequest }) {
+export function startTunnel({ url, token, log, getSnapshots, handleRequest, WebSocketClass = WebSocket }) {
   let ws = null;
   let backoff = 1000;
   let stopped = false;
-  const queue = []; // Events, die vor dem ersten Connect anfallen
+  let reconnectTimer = null;
 
   const tlog = (...a) => log(`  [tunnel] ${a.join(' ')}`);
 
   function sendEvent(snapshot) {
+    if (stopped) return;
     const msg = JSON.stringify({ type: 'event', event: 'device', data: snapshot });
     if (ws && ws.readyState === ws.OPEN) ws.send(msg);
-    else queue.push(msg);
+    // Kein Offline-Puffer: getSnapshots liefert beim nächsten open den
+    // vollständigen aktuellen Stand. Alte Events würden ihn überschreiben.
   }
 
   function connect() {
     if (stopped) return;
     tlog(`verbinde mit ${url} …`);
-    ws = new WebSocket(url, { headers: { authorization: `Bearer ${token}` } });
+    const socket = new WebSocketClass(url, {
+      headers: { authorization: `Bearer ${token}` },
+      handshakeTimeout: 10_000,
+      maxPayload: 1 * 1024 * 1024,
+    });
+    ws = socket;
 
-    ws.on('open', () => {
+    socket.on('open', () => {
+      if (stopped || ws !== socket) return;
       tlog('✅ verbunden — Re-Announce aller Geräte');
       backoff = 1000;
       try {
         for (const snap of getSnapshots()) sendEvent(snap);
-        while (queue.length) ws.send(queue.shift());
       } catch (e) { tlog(`!! Re-Announce-Fehler: ${e.message}`); }
     });
 
-    ws.on('message', async (data) => {
+    socket.on('message', async (data) => {
+      if (stopped || ws !== socket) return;
       let msg;
       try { msg = JSON.parse(data.toString('utf8')); } catch { tlog('!! ungültiges JSON vom Server'); return; }
-      if (msg.type !== 'request') { tlog(`?? Nachricht type=${msg.type}: ${data.toString('utf8').slice(0, 200)}`); return; }
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg) || msg.type !== 'request') {
+        tlog('!! ungültiger Request vom Server'); return;
+      }
       const respond = (ok, dataOrErr) => {
         const out = ok ? { id: msg.id, type: 'response', ok: true, data: dataOrErr }
                        : { id: msg.id, type: 'response', ok: false, error: String(dataOrErr) };
-        if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(out));
+        // Eine verspätete Antwort gehört ausschließlich zur ursprünglichen
+        // Verbindung; niemals in eine neue Server-Session senden.
+        if (!stopped && ws === socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(out));
       };
       try {
-        tlog(`>> request ${msg.method} ${JSON.stringify(msg.params || {}).slice(0, 160)}`);
+        if (typeof msg.id !== 'string' || !msg.id || typeof msg.method !== 'string' || !msg.method) {
+          throw new Error('Request benötigt id und method als nichtleere Strings');
+        }
+        if (msg.params != null && (typeof msg.params !== 'object' || Array.isArray(msg.params))) {
+          throw new Error('Request params muss ein Objekt sein');
+        }
+        tlog(`>> request ${msg.method}`);
         const result = await handleRequest(msg.method, msg.params || {});
         respond(true, result ?? { ok: true });
       } catch (e) {
@@ -54,19 +72,29 @@ export function startTunnel({ url, token, log, getSnapshots, handleRequest }) {
       }
     });
 
-    ws.on('close', (code, reason) => {
-      tlog(`getrennt (code=${code} ${reason}) — Reconnect in ${backoff / 1000} s`);
+    socket.on('close', (code, reason) => {
+      if (ws !== socket) return;
       ws = null;
-      if (!stopped) setTimeout(connect, backoff);
+      if (stopped) return;
+      if (code === 4000) tlog('!! Verbindung ersetzt: konkurrierende Tunnel-Instanz prüfen');
+      tlog(`getrennt (code=${code} ${reason}) — Reconnect in ${backoff / 1000} s`);
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, backoff);
       backoff = Math.min(backoff * 2, 60000);
     });
-    ws.on('error', (e) => tlog(`Fehler: ${e.message}`));
+    socket.on('error', (e) => tlog(`Fehler: ${e.message}`));
   }
 
   connect();
   return {
     sendEvent,
     isConnected: () => !!(ws && ws.readyState === 1),
-    stop() { stopped = true; try { ws?.close(); } catch {} },
+    stop() {
+      stopped = true;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      const socket = ws;
+      ws = null;
+      try { socket?.close(); } catch {}
+    },
   };
 }
